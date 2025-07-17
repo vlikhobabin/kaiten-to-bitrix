@@ -1,0 +1,1058 @@
+[
+  {
+    "id": 558565,
+    "uid": "8459d229-2775-412d-a7b2-ffda762c2ca3",
+    "full_name": "",
+    "email": "edv@eg-holding.ru",
+    "username": "edv6",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAADcElEQVR4nO2c207qQBSG/1KqxVahJlWjEr0y8f1fwxdQNPGApKQmraVCsS2zLwyJMpXNdHVvAl1f4s1QfsqXzrDmELWbmxsBpjSNdd/ApsMCibBAIiyQCAskwgKJsEAiLJAICyTCAomwQCIskAgLJMICibBAIiyQCAskwgKJsEAiLJAICyTSVH3DwcEB9vb2Kr2Jt7c3ZFlW+Jqu63Bdd6WcPM+R5zlmsxmyLEOSJL/mVoWywHa7jaOjo0pvIgzDX79os9nE2dlZ6ew0TfHx8YEoihAEQeVClQVuGoZhoNPpoNPpoNvtIgxDeJ6H8XhcSf7WC/yOpmlwHAeO48D3ffT7fcxmM1ImWeDn5yceHh7IGSo8PT1hNBpJ7Y1GA7quQ9d1tFotWJYFy7JgGIZ0reu6sG0bvV4PaZqWvneyQCFEZd1hVdI0xXQ6XXrN+/s7gK+nbj5u7+/v/7im1Wrh6uoKt7e3pcfGrS9jhBAIwxB3d3d4fn6Wuqxpmri8vCydv/UCv+P7Pnq9HoT4eZ6q3W7DcZxSmbUSCABxHOPl5UVqPz09LZVXO4HA15O4OG6bpimNkatQS4EAMBwOpbYy3bi2AoMgkH5Q+AlUoKj8Mk0Tuq4r5dRWIPD1g7KIaZpKGeRCWtd1nJyclH5/HMeFX+R/UDQDKpq1LIMskLpaMhgM1iYwz3OpjbuwAkXTt0ZDTUmtBWqaRs5Y+2oMZSWESlF3VV3e2sjVmKooElg0Li6j1l14d3dXalNdm6y1QMuypLa/rTMuUluBmqZJu4tJknAXXpXDw0OpZImiSDmntgKLtmaDIFDOqaVA13Wl7juZTErNiGon0LZtdLtdqX0wGJTKq9W+sOu6OD8/l2YgYRgiDMNSmVsvcL6teXx8DNu2pdeTJMHj42PpfLLAonJAlSzLlApYwzAKi2CVjXUAGI/HuL+/Vy5dvkMWuLOzg+vra1LGcDhEv99f+fqLiwvS5wkh4Ps+Xl9f13+0Y5MQQiAIAnieh8lkUknm1gtM0xRxHCOKoqXH6MqiLHA0GpEf+0WW1V95nsPzvL9mzA9Xzv+yLMN0Ov3nByw1/r8xNGpXSFcNCyTCAomwQCIskAgLJMICibBAIiyQCAskwgKJsEAiLJAICyTCAomwQCIskAgLJMICibBAIiyQCAskwgKJ/AEHo1OCQPm/iQAAAABJRU5ErkJggg==",
+    "avatar_uploaded_url": null,
+    "initials": "ED",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "auto",
+    "created": "2024-02-19T13:16:16.210Z",
+    "updated": "2024-02-19T13:16:16.210Z",
+    "activated": false,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 0,
+    "own_permissions": 0,
+    "company_id": 194617,
+    "user_id": 558565,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": null,
+    "apps_permissions": 5,
+    "external": false,
+    "last_request_date": null,
+    "last_request_method": null,
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 555597,
+    "uid": "7b88df4a-cda6-4e95-b776-e0941482a229",
+    "full_name": "Александра Алейникова",
+    "email": "bav@eg-holding.ru",
+    "username": "АлександраАлейникова",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAE5ElEQVR4nO2czXKqShCAGwVCUPEHV1alssoi7/8aeYqUx0pSBqIQFBW8G5nLtPjD9Eyde6v6W51BQ8NHD9MzYx3r7e3tCIwynb99Af93WCARFkiEBRJhgURYIBEWSIQFEmGBRFggERZIhAUSYYFEWCARFkiEBRJhgURYIBEWSIQFEmGBRFggERZIxDZ58sFgAL1eT7TjOIY8z02GhDAMwXEc0f78/ITj0dzWt1GBT09P8Pj4KNqu68L7+7uxeLZtw/PzM1iWJY7leQ5xHBuLaawL+74vyQMAGI/H0OmYe2uEYSjJq46ZxNjdTKfTs2O2bcNwODQVslHWcDgE13WNxTQisNPpwHg8bvysSawOer3eWcZXTCYTIzHBlMDhcAi2/e/r9fv7W/w7CAIjGVHPvv1+D0mSNH6mGyMC61m22+3g6+tL+lx3RnQ6HemcSZLAarUSbc/zoN/va40pYus+oeu6MBgMRDtJEsiyDPb7vTimOyNGoxF0u13RXq/X8PPzI33HVBZqF4hHwioT6jekOyOwnPV6DXmew3a7FcdMVQBGBFaUZSkE4lpMV0a4rgtBEIh2mqYi2+sxu93uxYGNglaBg8EAHh4eRHu1WkFZlgCnrlzvxpPJREtG4AdRlxZF0dXv6kCrQHyB+Abq7WuljmrM4/Eoxdhut5BlmWjjB6wDbQKxkMPhII2EYCAjmjL+cDgYjYnRJhB3ySiKzibxWZbBZrMRbWpG3Mp4ONWg9ev4zwq852aajqveEB4UiqI4y3g49YR6UY3LLCpaBOKyJM9z+P39bfyuLoG4LInjWAxYt2LqnE5qEYgl1KdumN1uB2mairZqRmAJ12JiubjwpkAWaFnW2dTsUve99HnbjPA8T1qoxQ8FU5alVMjrqgBAh0C8OJAkyc1VZzzAtM2INhlfj3ntHKqQV6TxhSRJctfImqap6LpVRiyXy5t/Z1nWWcw0TW/GzPMciqIQD6rf74PnedJ0TwWSQNu2YTQaScdmsxnMZrPW55pOp3cJDIJA2vMAAHh5eWkdD04P/8+fP0p/W0HqwpPJ5GwJXZVerwee5938ns4RtGkLoC0kgbqL0lvn070l4DiOtBChgnIX9n0ffN8X7cPhcFcXrOO6rjSCh2EIi8Xi4jYkzvgsy2C9XreK2e/3pZo1DMPGAvxelAXibFkul63fJ5ZlQRAEYvm/yohLN4S772KxaH3zvu/D6+uraI9GI7Bt+2wOfS9KXbip9runlMDg1RO40o3xNul+v2+dfXDK2voKTdO9tEFJYPXUKtI0VS4HcLfH565omnmo/uIAP2zKu1xJYJtp1C02m83NjMCbRtSYURRJU7umHwHcS2uBjuNIc9eyLMk/ncBZiDMCz1QoGQ+nAQ9vOqmWR60F4topjmMoikIpeEVTRtRH+KYBiwrOYNWaVklgHR03UxTFxU0nvFqDFwZUqXbuKlRrzFYCq/ljRZ7nV1dB2oAfRJUROOOjKCJnfAXOQpVu3EogDqAj+yrwe62aZ6usvNwLHsmb5tm3aFVI53kOHx8f0gXoZD6fS7ME27alrl2WpbaMh9M64nw+l6Q5jiNtv97C4v+5iAb/RpoICyTCAomwQCIskAgLJMICibBAIiyQCAskwgKJsEAiLJAICyTCAomwQCIskAgLJMICibBAIiyQyD/3GQdB245SxgAAAABJRU5ErkJggg==",
+    "avatar_uploaded_url": null,
+    "initials": "АА",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "dark",
+    "created": "2024-02-15T06:55:01.858Z",
+    "updated": "2025-03-25T06:47:13.170Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 4097,
+    "own_permissions": 0,
+    "company_id": 194617,
+    "user_id": 555597,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": null,
+    "apps_permissions": 5,
+    "external": false,
+    "last_request_date": "2025-07-17T05:14:28.794Z",
+    "last_request_method": "POST",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": {
+      "current_card_view_id": "8231bfad-e0c6-40ad-8d69-f3f64323c5ea"
+    },
+    "locked": false
+  },
+  {
+    "id": 743106,
+    "uid": "d3f6a3e8-247a-402b-9756-79d37850431d",
+    "full_name": "Александр Алексеевич Кузнецов",
+    "email": "kuaa@eg-holding.ru",
+    "username": "kuaa",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAE3klEQVR4nO2caU/qQBSG3y5KkaUUUXG7uNQY/f8/w68mJhBRXFCrhLaWraW9X669DqBITylq5vnkHO3M+OC0p2cmCmdnZwE4kREXPYGfDhdIhAskwgUS4QKJcIFEuEAiXCARLpAIF0iECyTCBRLhAolwgUS4QCJcIBEukAgXSIQLJMIFEuECiXCBRLhAInLUC1VVRTqdDtuWZaHT6czcTz6fx8rKChMzDAPD4TBsi6KI9fX1sB0EAR4fH6NOHQCgKAoKhULY7vV6aLfbM/cTWWCxWESxWAzbvu/PLDCbzULXdQiCEMbu7u4YeQAgSRK2t7fD9nA4JAtcWVlh+my1WpEELmwJK4oyJu/5+RkPDw+LmlIkFiJQlmXoug5JksKYaZpoNBqLmA6JxAWKoghd15FKpcKY4zi4vLxEEPy8YzqJChQEAfv7+8hkMmGs3++jVqvB9/0kpxIbiQrc2dlhnnye56FarcLzvCSnESuJCdzY2GBSEd/3UavV0O/3k5rCXEhEoKZp2NnZCdtBEKBer8NxnCSGnytzF5jJZLC3t8fEbm5uIuVc35G5CkylUtB1HaL4f5hmswnDMOY5bKLMTaAsyzg6OoIs/3/ZeX5+xv39/byGXAhzETgp1/upifI0YhcoCAIODg6YXK/T6fzYRHkasQv88+cPVFUN24PB4EcnytOIVWC5XEapVGJikiQxBYPfRmwCC4UCUx56Q5Ik7O/v/1qJsQnM5XLh16P1vGw2i3K5HNdQ34rY74GO4+D8/ByWZTHxzc1N5sHyW4hVoGVZqFarcF0XV1dXcF03/N5bJeZ9DfA3EJvAdruNWq0WLl/XdXF9fc38TCqVwu7ublxDfgtiE2jb9lieZ5rm2Gvb6uoqNE2bqe/Rfr/TA2nuxYTb21t0u10mVqlUsLy8/OU+Rh9KoiiSJY7eSkbH+CpzF+j7Pur1OpNIS5I0VqH5jCAIxn7B9+/YURj9AKMWdROpB3a7Xdze3jKxXC43U2rT6/WYdjabJc1pNCMY7f+rJFaRNgxjrAa4tbU1tqn+EbZtM+33WwOzsry8PPYBjPb/VRLdE7m+vp6Y2ryvF36EaZpMW9M0KIoSaR7lcpm5hzqOw8xrFhIV6Hke6vU6E1MUhSn3f8Tr6yuzBfBW9Zk1r1RVFWtra0zs6elppj7ek/i+sG3bY6cP1tbWvrQk7+7umHY6ncbx8TFzRuczSqUSDg8PmZjjOGi1Wl+6fhK0R1lE7u/vkcvlmBt5pVKZupRs20az2cTm5mYYS6fTOD09hWmaME0TnU4HruvC933IsoylpSVks1kUi8WxJT9pRczKQgS+7cqdnJyES1CWZezt7aFarX56bbPZhCzLY8tQVVWmDjkN13Vj2VZd2OGifr+Pm5sbJpbP55m940kEQYBGo4FGoxE5+bUsCxcXF5GO442ykL/AN15eXpDP55ljctvb27Bte+ztZRTDMNBqtbC+vg5N06beB4fDISzLgmEYkVOWSUQW2G63MRgMwnbUTfJGo8H0g39n96YJxD8pzWYzXNaZTAayLEOWZQiCAN/34Xkeer0eut3uXPZkBP6fi2jwM9JEuEAiXCARLpAIF0iECyTCBRLhAolwgUS4QCJcIBEukAgXSIQLJMIFEuECiXCBRLhAIlwgES6QCBdI5C8gKM51ZTFsnQAAAABJRU5ErkJggg==",
+    "avatar_uploaded_url": null,
+    "initials": "KU",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "light",
+    "created": "2024-11-26T16:49:13.658Z",
+    "updated": "2024-12-03T05:29:13.394Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 743106,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2024-12-03T03:52:46.743Z",
+    "apps_permissions": 1,
+    "external": false,
+    "last_request_date": "2024-12-13T13:33:09.143Z",
+    "last_request_method": "GET",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 747347,
+    "uid": "bf65254c-7c82-40fa-9150-91a7db5ca93c",
+    "full_name": "Александр Евгеньевич Комков",
+    "email": "kae@eg-holding.ru",
+    "username": "kae1",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAFkklEQVR4nO2cW0/qTBSG3x6kRQsU6gFPiKYmXvj/f4W33qBRgmdBgXKQgm2/G+lmprqlXQW+ncyTmDijTtuHOaw10yhdXFwEECRGXvUN/OsIgUSEQCJCIBEhkIgQSEQIJCIEEhECiQiBRIRAIkIgESGQiBBIRAgkIgQSEQKJCIFEhEAiQiARIZCIEEhECCSiUhsoFArIZrNh2XEcDIfD2O3k83msr68zdc1mE57nxWrHNE3ouh6WW60WPj8/Y9/PvJAFlkollEqlsOz7fmyBhmHAtm1IkhTWPTw8xJYnyzKq1SoURWHu5/X1NVY7sa65sJbnRNf1iLxWq4Xn5+fYbZmmycgDgM3NzVTu8ydWKlBVVdi2zTx0t9tFo9FI1J5lWZG6bDYbmRrSZGUCZVnG6ekpNE0L6waDAW5ubhAE8V/XyWQyyOfz3/7sO7FpsRKBkiTh+PiY6Rmu6+L6+hq+7ydqc1aS7/tot9thuVQqMVNEmqxE4OHhIUzTDMuTyQRXV1ek1XJW4GAwYASqqspcL02WLnBnZwdbW1th2fd9XF9fw3XdxG3mcjlmKuj1enAch5kKFjWMlyqwWCzi4OAgLAdBgJubm0Rx4yy8nE6nA8/z0Ov1wrp8Po+1tTXSdb5jaQI3NjZQrVaZukajgW63S2pXURQUi8Ww7LouPj4+gC+RUyRJWkgvXIpATdNg2zZk+c/lnp6e0Gq1yG0Xi0Wm3dm5r91uL3wYL1ygqqo4PT2Fqv5JelqtFh4fH1Npn5fy/v4efv/5+QnHccKyruvY2NhI5bpTFipQlmXYts1M8JRAmUfXdRiGEZaHw2E4fKe8vb0x5bQzk4UJlCQJJycnzCc+HA4TB8rfwfc+Xha+PrDZnJof8lQWJrBSqaBQKITl8XhMCpR5+EUhCAJm+E7xfZ9ZTBRFSTUmXIjAcrkcGSqKoqSaDfBhieM4PwbivNg0h3HqAk3TxP7+fqReURQcHx+nJnGe4TvFcRxMJpOwnMvlkMlkUrmP1AXmcrnwe34/zzAMlMtl8jX41MzzvF/jSb4XphXSLGwOHAwGuLy8ZMIIANjd3SWHEvzmQLvd/nVuXdQwXojAbreLWq2GyWSCer3OzE3TnRh+4zMO/MP3+31omvbXL8/zMB6Pw7/JZDLMaEkKeUufp9PpMKHKVKJt2+HvaJqGw8ND1Ov12O2vr68zZzAAIinivFiWxeTLSUi9B/Z6vUic1+120Ww2mTrLspizlHlJMx0rFoukkYBlbibc399HsoRKpRJrNZQkKZH0n5BlmdmISELqQ/gnfN/H7e0tzs7OwkxAURRUq1XUarW52jBNk8mpR6MREyTPQzabZQJ8y7JImxpLEwgAHx8fuL+/R6VSCetyuRzK5fJcp3D84vHy8hL74TOZDM7Pz8NV3DAM6LqO0WgUq50pS9+RbjabkV6zt7f3a2iztrbGrJr8uce8jMfjSGhFmVdXciZSr9eZkGIa2vwtyd/c3IzEfnEP3qfwWYtlWYkzpJUI9DwP9XqdWa01TWO2+3nipG6/0el0mNiU791xWNm5cK/Xw8vLC1O3tbX17U6JYRjMnqLruqT4LQiC1PYJV/pmwuPjIwaDAVN3dHQUOfzhH47S+6bwiw+/ws/LSgUGQYDb21tmLlNVlcksZFmO9Mo0BI5GI+bDkyQpUUy48peLXNfF3d0dU5fP57G9vQ18bRzw787MLkAU+F6YZBivXCC+ehS/W3JwcIBsNpvq4sHz/v7O9P7v8uzfIAfSnU6H6RH8nDYvjUYj0rMMw0C/30e/32eulxa+7+Pu7o55ITPuPCiJ/1xE438xhP9lhEAiQiARIZCIEEhECCQiBBIRAokIgUSEQCJCIBEhkIgQSEQIJCIEEhECiQiBRIRAIkIgESGQiBBI5D9nsBxpKB3NPgAAAABJRU5ErkJggg==",
+    "avatar_uploaded_url": null,
+    "initials": "KA",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "light",
+    "created": "2024-12-03T03:51:03.262Z",
+    "updated": "2024-12-03T05:26:57.431Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 747347,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2024-12-03T03:51:03.256Z",
+    "apps_permissions": 5,
+    "external": false,
+    "last_request_date": "2024-12-03T10:41:44.607Z",
+    "last_request_method": "GET",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 743087,
+    "uid": "232bbcad-1284-4b60-b725-3ffc965d58db",
+    "full_name": "Александр Иошин",
+    "email": "iam@eg-holding.ru",
+    "username": "iam47",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAD/klEQVR4nO2czXKqMBSAj/wUFAQFy8bxAfr+r9FNF30Axy6sI5UfsUgR7qZym6hT8UQKM+dbNQRD+k2OSU4Ye8/PzyUQNyP9dQe6DglEQgKRkEAkJBAJCURCApGQQCQkEAkJREICkZBAJCQQCQlEQgKRkEAkJBAJCURCApGQQCQkEAkJREICkSgiG1NVFVzXvfr+KIpgt9vVfo6maTAej6tykiQQx3HtdkQgXOB0Or36/sPhcJNAz/PA87yqnKYpvL6+1m5HBH8awmVZ/6WIXq8HjuMw13RdB8MwBPbseoSOwN1uBy8vL2CaJgyHQ7BtGzRNq+rzPIcgCGC73UIcx5BlWe1njEYjUJTTbruuC0mSoP+HuggfgUdJi8UCVqsVUxeGIcznc/B9/yZ58C3qHI7jgCQ1H1CdmoVVVQXLsqqy7/vV37Isw2g0arxPnRLoui70er2qvFwuIc9zpr5pOifwSJZlkKYpRFFUXbMsCx4eHhrtU2cEmqYJuq5X5TAMAQAgCALmvqZHYWcE8mKO4sIwhKIoLt53bzohUJIkZueR53m18yiKohqN8L1LMU2zub419iQE4/EYZFmuyr7vM4vwn7MxAMBkMmmsb50QyIflx8cHU46iiJmNeeH3pPUCNU2D4XBYldM0Pdk/l2UJm82mKkuS1NiasPUC+dHHh+ul602FcecE8uF7JEkS2O/3Vdk0TWYffi9aLZBfGP+WgODlNrGkabXAa8P3Uv1kMmG2fvegtQL55EBRFCe7Dp79fs+ktFRVZSageyA0HygSPj0VxzEoinI2F/iTOI6Z5Krrusx+WTStFcjPorZtg23btdsZjUYgyzIcDgeBvftPK0O43+/DYDAQ0pYkSSdHACJppUDRa7h7zsatC+Fzh0ar1YrJuFzThud51QxsGAb0+334/PwU3t/WCbRtm5kokiSBxWJRux1d15nvTNd14e3tTVg/j7QuhPnw/W3td4n1es2UHce5y5qwVQL5Q6OiKC5u3X4jDEP4+vq62LYoWiWQPzQKguDm5UdZlify75FgaJ3An/BhWBf+8/z3qwhaI9AwDObQKMsy9AtDaZrCdrutyudmeCzCBSqKArZtw3Q6hcfHR6bOsiyYzWbgOM7J8SMfXtjRd6kd0WEsdDwPBgN4enq6WK+qKvNW1Xw+h/V6fXJoBIjZl2ez2cBsNqtS/Mddzi1vhZ3jT0P4OGHwZxhRFN387gxPURRMuh8E70yEjsA8z2G5XF59/3EUlGXJfO7nMaUI3t/fmUMnkYmFHv1yEY7WzMJdhQQiIYFISCASEoiEBCIhgUhIIBISiIQEIiGBSEggEhKIhAQiIYFISCASEoiEBCIhgUhIIBISiOQfqBNUZcwHLaYAAAAASUVORK5CYII=",
+    "avatar_uploaded_url": null,
+    "initials": "IA",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "light",
+    "created": "2024-11-26T16:47:27.317Z",
+    "updated": "2024-12-03T12:11:00.485Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 743087,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": {},
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2024-12-03T03:55:01.622Z",
+    "apps_permissions": 1,
+    "external": false,
+    "last_request_date": "2024-12-03T12:11:08.288Z",
+    "last_request_method": "GET",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 743088,
+    "uid": "f36b3d10-94dd-4d38-9e0e-3b2d5a72d54a",
+    "full_name": "Александр Моисеев",
+    "email": "maa@eg-holding.ru",
+    "username": "maa6",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAFHElEQVR4nO2cXW+qTBCAB1BRVNSl6U3TtOl1//+v6E/oXdukiZUPQQFBOBdv5WVHaoFZc3KSeZJesK0LPrs7u7NLqr28vJTA9Eb/2w/wr8MCibBAIiyQCAskwgKJsEAiLJAICyTCAomwQCIskAgLJMICibBAIiyQCAskwgKJsEAiLJAICyTCAomwQCKDNn+0WCxgMpmclYdhCLvdTtnD2LYNlmVd5T6r1QpM06yu1+s1HI9HUp3QVqAQAoQQZ+VBEMDr6yv5IU7c39/DeDw+K39/fycJ1HUdHh4ewDCMqizPc/j6+updZ1U35cO2bcNwOCQ/BADAbDZrlKcCIYQkDwDg5uZGSd0kgZqmNfbMPjiOo6SetnVPp1MlDdZZYJZlUJb/v06jQqCu67BaraR7qMI0TZjNZo2/U9FonQXmeQ5BEFTXlmU1TjBdWC6X0hDbbDak+urUh+rxeATf96trx3FA0zRS/Z0FGoZx9gWpLVn/fJqmEMcxqb4TmqZJdUdRJAkcDodg2zbpHr0EBkEAeZ5XZUKI3i05HA5hPp9X167rgq6rWZ7iSS4MQ9hut9LfUBu/l8CyLMHzvKoMS+gCHkabzeZsxuwLluP7PmRZBlEUVWXL5RIGg1aruUZ6NbWmaeC6rlTWtyXxEEvTlByXAAAGgwEsl8vqOkkSSNMU4FvkCepKorfAKIogSZKqDE8EbcBLiVNsVTGEcVipN7jrutJKgjKMewvED6XrutTibag/eFEUVVhQ0QOxlPqz4mFsWVZjCtkGkkDKbKxpmrT2832/yk2pAieTiSTkFBrqqFpJkAQeDgepJefzOYxGo1Z14OBd7yFUgThNa1pX+r4PRVFU131XEuRggx+ubUCut3iWZWfLi77gSaEeGuocj0cpIRgMBrBYLDrfjyzQ8zypJdsMBbyAxUGdAu7ZQRD8uG2FVxJ9NhjIAnFLjsfjXwMyHi4qUzfcgJfqxglBn90lJUv+rmvC+u/3+72y1A337DzPL4YGnBD0WRMqERgEgbSDcikg480H1b0Pr/1+Cw3UYaxEIG7JSwG53vvKsjz7AhRwz4+iCEzTvPiTZZnU+OPxGKbTaet79k8CEa7rwu3tbXUthJBSJmgYIjgGUWja0X56eupVl+M4rY8QlJ3K7XY7KZY1JemLxUIqu+bkQUEI0TqdVHqsiRfD9UwD0JfEG7MU8I42FcMwWqelyoYwfAu8u7urroUQsF6v/7sRioue5ylb+61WK2kjI47jzo1jWZY0gzuO0yo+KxV4OBwgDMNqb/AUl5IkueraD8+cn5+fnScn0zTh+fm5urZtG0ajERwOh4ufU/5mwk+pXX34Jkmi7EAeHxrhc4+2pGkKYRhKZW3iqnKBTakd3h25Zu9zXVe6fxf67NAoF1gUhdQDRqMRPD4+VtdlWSoT2JQ5UOr2PE/Km03T/PWo4iovF+EvUe99YRgqO/fF22dxHJNCQ1EUndPSqwi8JOmaw1dF3fh9GTzDY64i8KcUrW+AbwIvi1SFhv1+D/v9vrr+7ajiau8HNn0ZPMFQwNmC7/vK0kL87Jc2GK4mMI7js22qv7Xv1xU8k196c6zVQtr3fWlB2bYXfXx8VGu0siyl85NLbLdb6R54YjAMA7bbrbTXp+pIAL7TzLe3N+mFzJ8O3zX+z0U0+B1pIiyQCAskwgKJsEAiLJAICyTCAomwQCIskAgLJMICibBAIiyQCAskwgKJsEAiLJAICyTCAomwQCJ/AClDWfuC4eDZAAAAAElFTkSuQmCC",
+    "avatar_uploaded_url": null,
+    "initials": "MA",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "light",
+    "created": "2024-11-26T16:47:31.650Z",
+    "updated": "2024-12-03T08:48:46.721Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 743088,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2024-12-03T03:55:08.831Z",
+    "apps_permissions": 1,
+    "external": false,
+    "last_request_date": "2024-12-04T11:09:18.732Z",
+    "last_request_method": "GET",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 747344,
+    "uid": "8d40fe14-7820-4f97-98cd-ada88396550e",
+    "full_name": "Алексей Дикарев",
+    "email": "dan@eg-holding.ru",
+    "username": "dan38",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAFZElEQVR4nO2cW3OqPBSGXwSVtogH2tppa2f2Xaf//2f0ujOdXvRgz7VW1CoImH1T+ExARRb9ZM/kuQslkP2QlawkzlYuLy8ZJJkpbbsB/zpSIBEpkIgUSEQKJCIFEpECiUiBRKRAIlIgESmQiBRIRAokIgUSkQKJSIFEpEAiUiARKZCIFEhECiQiBRKRAoloWSvW63Xs7OykupcxhiAI4LouptMpfN/P+trUmKaJ3d3dqNzv9zGbzXJ/T2aBrVYLrVYrU13HcWDbNnq9HhzHydqElZydnaFarUZlVVXx9PSU+3syC6Sg6zp0XUe73YZt23h8fMxVZK1W4+QBgGVZeH5+BmP5/hBj62NgvV7HxcUFjo6OcnumZVmxa+VyGaZp5vaOkNx6YLfbxfv7O3dNURRomgZVVVEul2EYBgzDQK1Wg6Io3H0nJyfQdR339/ekXqKqKprNZuLfLMuCbduZn53Er4YwYwye58HzPDiOg9FoBACoVqtot9vY39/nRFqWhSAI0O12M7+z2WyiVPovsD4/P6Me2Wg0oGlarpPYVkLYdV08PDzg5uYGnudxfzs8PMw8OUEIX8dx8Pn5GZUVRSE9O4mtjoGj0QjX19exHtHpdKBpmweHruswDCMqD4dDjMdjBEEQXUsaHylsfRJxXRe3t7fcNU3TcHBwsPGzRDm2bYMxxo17u7u7qfPXNGxdIH56ymAw4K4dHBxw4+M6FEXhBAZBEI25X19f3L37+/vkNocUQiAAvL29ceVw1k6LaZool8tReTAYRLO5bdvcMNFqtTb6OKsojMDxeBxbam2St4nhuzh5MMa4Hq5pGur1Oqm9IYURiB+JiyyuZVehaRoajUZU9jwvCt+Qfr/PlfMK40IJ/P7+5sq6rqeqJ4bkYu8LGY1GXA8XQz4rhRIohnClUklVT+xNSQIh9MK8csJCCVzM10JUVV1ZR0xLJpPJ0o0JUWweYVx4gYvLsiTS9j78rEwmk0lU1nUde3t7mdoatY9UO2eSUoskqYv3L24cMMZiOZ+IOJlQVyaFEigu3xhjmM/nS+8PNwdChsNhbG0t0u/3ud2eVqu1tpevbHPmmr+AON6t2zURw3c0GsU2UpOYTCZR6KqqikajEeuZaSmUQDFtWSWwUqmgVqtx105PT3F6errxey3LyiywUCEsLt2m0+nSey3Lym05Zppm6pRJpDACS6VSbEYUE+tF8t6Wyvq8woSwZVmxwXzZ9rthGNxYN5vNNg7BarXKzeCWZeHl5WXjdhdCoKIoaLfb3LXv72+4rpt4vzh59Hq9jf/xqqqiXq9HH61arcIwjNh6fB2FCOHj4+PY7Pnx8ZF4b9Kh0arkeRlBEOSyT7h1gc1mM3akOZ1Ol4akeGg0HA4z/+Kg1+utfHYatirw6OgIf/784a4xxlYebYqDvShhE8bjMbduLpVKS49El7EVgc1mE+fn5zg5OYmlIg8PD0tnX/HQyPf92FHApogfYNMw/rVJRFEUqKoaHazv7OxEh+pJORdjDN1ud2WPEnufuCzLQr/f5z5kOMMvm8BEchPY6XTQ6XQy1Z3NZri7u4vtIi8iHhoh4+Qh4nkebNvmdrTD39GkYatjYBAEeHl5wdXV1Up5SNhBnkwm3NYUBbHXb5JU/+95YHjcOBgM8PX1tXK3ZZHf6H0h4S5O+IEqlQpM08RwOFxbN7PAwWCwNn2Yz+fwfR9BEMD3fbium3psEXEcB6+vr1E56+I/iXD8XTzESrvOVuT/XERj64n0v44USEQKJCIFEpECiUiBRKRAIlIgESmQiBRIRAokIgUSkQKJSIFEpEAiUiARKZCIFEhECiQiBRKRAon8BRglDddDvHcwAAAAAElFTkSuQmCC",
+    "avatar_uploaded_url": null,
+    "initials": "DA",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "auto",
+    "created": "2024-12-03T03:50:46.828Z",
+    "updated": "2024-12-04T06:29:52.071Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 747344,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2024-12-03T03:50:46.823Z",
+    "apps_permissions": 5,
+    "external": false,
+    "last_request_date": "2024-12-11T06:06:32.044Z",
+    "last_request_method": "GET",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 748115,
+    "uid": "3e89e3f5-dec3-42c2-a3ce-bcf87f0b19b9",
+    "full_name": "Алексей Французов ",
+    "email": "fai@eg-holding.ru",
+    "username": "fai3",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAD1UlEQVR4nO2c3XKiMBSAD6AopRYB25naV+j7P0Ufohdtp9OxQBT/MMDerOkmlQoesgs757vqQYyZz5zkJDg1np6eSiAuxvzXHeg7JBAJCURCApGQQCQkEAkJREICkZBAJCQQCQlEQgKRkEAkJBAJCURCApGQQCQkEAkJREICkZBAJCQQCQlEMmirIc/zwHEcdDtxHMN+v699v2macHd3J+IsyyCKInQ/6tKawCAIIAgCdDu73a6RQN/34eHhQcRFUQBjDPI8R/elDr1P4TAMpdg0zVa+yLr0WuBoNILJZPLtuipVJ62lsMrb29tFc9HhcKh9b5Uo13XBcRzYbreNP78p2gTmed5oLruEPwVGUQS+74NhGOK1l5cXrZ8PfU7hm5sbsG1bxEmSQJqmIg6CQMjUSW8Fqum7Wq2AMSbi4XAInudp70cvBVqWBdPpVMTr9Ro455AkiXTf31hMeikwCAIwza+uH8Xt93vYbDbiuud5MBhom+YB+ipQHVlxHIu//1z5DcPQPgp7J9BxHHBdV8RpmkqrfRRFUJZfv1omgQqqkM/PTyk+HA7Sauw4DlxdXWnrT68EGoYhbdOKopDS94hawM9mM2196pVAz/NgOByKuOrQII5jKIpCxL7vS4tOm2hboizLgtFo1Og9nPMfT1HOpe+RPM+BMQa+7wMAwGAwAM/zTo5WLNoEzudzmM/njd7z+voK7+/vJ19TC2POOSyXy8q2jlu7I7PZTIvA3qSwujVTV1sVxhhwzkWsbv3aojcC1YXg3ElPWZbfRpyOc0JtKbxcLqVdQR3W6/XJ667rwng8FnGWZcA5PzvHpmkKt7e3Ig7DsHKKuBRtAhlj8PHx0Upb6uizbRseHx8btzMej+H6+lqqE7F0PoVN05QWAyxt70w6L3A6nYJlWa21px5EYNF7VNECavo2fewJv0fdsQA/juiqGrIpnRZo27b00KgoCnh+fpZ2GXUoyxLu7+9FHIZhawI7ncKnSpem8gAAFouFVDNOJpPGu6QqOi1QrdsuHTVZlsFqtZKutbWYdFagOkp2ux2q/FgsFlL83wtU0xc7ZyVJIm3t1Pn1UjopUH1oVJYlWmBZllrOCTspUK3VGGONfrFQhZrGbdSYnRRY99yvKdvtVtpvt7HL6ZxA9aER51x6YI5F/TKwadxaIZ0kCWRZJuKqk5VzWJYlnZhsNpsfz/2aEkXRt3NB0zQvqi8BAAz6z0U4OpfCfYMEIiGBSEggEhKIhAQiIYFISCASEoiEBCIhgUhIIBISiIQEIiGBSEggEhKIhAQiIYFISCASEojkF5grYAZaCVtFAAAAAElFTkSuQmCC",
+    "avatar_uploaded_url": null,
+    "initials": "FA",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "dark",
+    "created": "2024-12-03T17:00:18.470Z",
+    "updated": "2024-12-17T12:41:21.822Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 748115,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2024-12-17T12:33:05.627Z",
+    "apps_permissions": 1,
+    "external": false,
+    "last_request_date": "2025-04-28T07:06:55.855Z",
+    "last_request_method": "GET",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 812520,
+    "uid": "5933faa1-82d9-432f-bc93-6695e6aad040",
+    "full_name": "Алена Чебыкина",
+    "email": "chap@eg-holding.ru",
+    "username": "chap9",
+    "avatar_initials_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAABmJLR0QA/wD/AP+gvaeTAAAEE0lEQVR4nO2c307qShSHf3amlEEbi1UjMYQLIhe+/2P4AIR4IUYDohJaIPYPbc/N2WSXqmdPV4/azfruZoDJ4mMGZs2scHBzc5OBKY3x3QHUHRZIhAUSYYFEWCARFkiEBRJhgURYIBEWSIQFEmGBRFggERZIhAUSYYFEWCARFkiEBRJhgURYIBEWSIQFEpH/x6CNRgOO46DVakEpBdM0IYSAYRhIkgRJkiAMQwRBgNVqBd/3sdlsPhzPNE24rrttJ0mC5+dnUoyO46DZbG7bnufh7e1Ne5xKBdq2jU6nA9u2P3yOEAJCCDQaDdi2jbOzMwDAcrnEbDbDYrEovMY0TVxeXm7bYRiSBZ6cnKDdbm/bcRx/n0ApJXq9HhzHKT2GbdswDONdgT8ZskClFK6urmCa5ruPR1GEKIoQxzHSNIWUEqZpQimFg4OD3HOn0yk1nC+HJFAphcFgACnzw6Rpitlshvl8/uGyMAwDtm3DdV04joMwDGs3+0ARKIRAv98vyPM8D/f394ii6NPXp2kKz/Pged52VtaR0gK73S4sy8r1vb6+YjweI8v0Cr42m82nv8I/mVICW61WblsBAL7v4+7urqq4akOpjXSn08m1kyTBeDyuKqZaoS3QNE0cHx/n+p6env7zO+9vRVug4zi57UeWZXh5eak6rtqgLXA3y1gul4jjuMqYaoW2wMPDw1x7tVpVGU/t0BJoGAYajUaub71eVx1TrdDaxuzKw7+p2lcjhMDFxQVpjN9PYihoCTSM4oRNkqSSQHSQUuZOZ74T7SW8y3cI/EloCXwvRds9Udk3tJZwmqaFPiHEl8/CKIowGo1IY3S73UJCUAYtge8l/EIIchC6ZFmGMAxJY7w3GcqgtYR/HYr+jlKqkkDqivZGeveT391Y7xvaAnc3zp9dIO0D2gKXy2WurZTa61moLdDzvML34K+ryX1EW2CSJIXLH9d193YplzqRnkwmhU11r9er7cUQhVICgyAoHKJaloXBYLB3EksXFz08PCAIglxfs9nE9fU1zs/PtVI8KSWOjo7KhvKtlL7WTNMUt7e3GAwGuWMuKSW63S46nQ48z4Pv+4iiCJvNBlmWwTAMSClhWRaUUrBtG0oprNdrDIfDqt7Xl0GqTAjDEKPRCP1+v5CRSCnhum7h+vNvg1wfGIYhhsMhptNpZfllnaikOitNUzw+PmI2m+H09BTtdvuPc+QwDOH7PubzeRWhfDmV1gfGcYzJZILJZAIpJZRSsCwLQojtj0qapkiSBFEUIQiCP7rRi+M4V7lVRRnIYrHI5fVlagMB4ID/uYgG10gTYYFEWCARFkiEBRJhgURYIBEWSIQFEmGBRFggERZIhAUSYYFEWCARFkiEBRJhgURYIBEWSIQFEvkHmONhS8ceAQIAAAAASUVORK5CYII=",
+    "avatar_uploaded_url": "https://files.kaiten.ru/81dfcbdc-e0e7-483e-b9b4-0933c114a800.jpg",
+    "initials": "CH",
+    "avatar_type": 3,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "auto",
+    "created": "2025-03-17T06:40:01.108Z",
+    "updated": "2025-03-17T14:45:50.548Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": null,
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 812520,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": null,
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email",
+        "telegram"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email",
+        "telegram"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email",
+        "telegram"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email",
+        "telegram"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email",
+        "telegram"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email",
+        "telegram"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email",
+      "telegram"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2025-03-17T06:40:00.422Z",
+    "apps_permissions": 5,
+    "external": false,
+    "last_request_date": "2025-07-16T12:22:20.332Z",
+    "last_request_method": "POST",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  },
+  {
+    "id": 735137,
+    "uid": "63a8c898-2a4f-4b17-9045-96bd938cb883",
+    "full_name": "Альбина Кочкурова",
+    "email": "kam@eg-holding.ru",
+    "username": "kam90",
+    "avatar_initials_url": "data:image/png;base64,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",
+    "avatar_uploaded_url": null,
+    "initials": "KA",
+    "avatar_type": 2,
+    "lng": "ru",
+    "timezone": "UTC",
+    "theme": "auto",
+    "created": "2024-11-14T08:56:43.975Z",
+    "updated": "2025-03-10T07:36:28.688Z",
+    "activated": true,
+    "ui_version": 2,
+    "virtual": false,
+    "email_blocked": null,
+    "email_blocked_reason": "Mail command failed: 550 Domain a.kaiten.ru [a+co-ea4e519c9d2d5e28-c46991235@a.kaiten.ru] not verified. Visit https://smtp.bz/panel/domain",
+    "delete_requested_at": null,
+    "permissions": 9216,
+    "own_permissions": 9216,
+    "company_id": 194617,
+    "user_id": 735137,
+    "default_space_id": null,
+    "role": 2,
+    "email_frequency": 2,
+    "email_settings": {},
+    "slack_id": null,
+    "slack_settings": null,
+    "notification_settings": {
+      "card_add": [
+        "email"
+      ],
+      "card_move": [
+        "email"
+      ],
+      "card_unblock": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_block_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_add": [
+        "email"
+      ],
+      "due_date_reminder": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_member_remove": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_comment_mention": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "card_due_date_change": [
+        "email"
+      ],
+      "card_description_change": [
+        "email"
+      ],
+      "card_member_become_responsible": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "checklist_item_responsible_add": [
+        "email"
+      ],
+      "tree_entity_user_access_request_add": [
+        "inner",
+        "mobile_app",
+        "email"
+      ],
+      "tree_entity_user_access_request_update": [
+        "inner",
+        "mobile_app",
+        "email"
+      ]
+    },
+    "notification_enabled_channels": [
+      "inner",
+      "mobile_app",
+      "email"
+    ],
+    "slack_private_channel_id": null,
+    "telegram_sd_bot_enabled": false,
+    "invite_last_sent_at": "2024-11-14T08:56:43.972Z",
+    "apps_permissions": 5,
+    "external": false,
+    "last_request_date": "2025-07-04T08:27:30.516Z",
+    "last_request_method": "PATCH",
+    "work_time_settings": {
+      "work_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "hours_count": 8
+    },
+    "personal_settings": null,
+    "locked": false
+  }
+]

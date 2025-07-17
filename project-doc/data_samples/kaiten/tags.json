@@ -1,0 +1,102 @@
+[
+  {
+    "created": "2024-12-06T13:04:26.564Z",
+    "updated": "2024-12-06T13:04:26.564Z",
+    "id": 735253,
+    "name": "Olivia",
+    "company_id": 194617,
+    "color": 8,
+    "archived": false,
+    "uid": "a6fd03bf-26e7-487d-b39e-8f9acb801fc7"
+  },
+  {
+    "created": "2025-04-01T07:53:41.136Z",
+    "updated": "2025-04-01T07:53:41.136Z",
+    "id": 810376,
+    "name": "Задача месяца",
+    "company_id": 194617,
+    "color": 1,
+    "archived": false,
+    "uid": "1f23398e-b460-4f37-9832-011477c9bc06"
+  },
+  {
+    "created": "2024-11-11T07:14:54.644Z",
+    "updated": "2024-11-11T07:14:54.644Z",
+    "id": 717486,
+    "name": "1С",
+    "company_id": 194617,
+    "color": 13,
+    "archived": false,
+    "uid": "ccc7799d-eeab-4b31-a555-0b1e1c6d14a6"
+  },
+  {
+    "created": "2024-09-09T15:17:57.118Z",
+    "updated": "2024-09-09T15:17:57.118Z",
+    "id": 673831,
+    "name": "Сопровождение реализации проектов",
+    "company_id": 194617,
+    "color": 10,
+    "archived": false,
+    "uid": "fc10147f-d8af-42b6-be2c-dadf671c249e"
+  },
+  {
+    "created": "2024-01-10T11:26:31.375Z",
+    "updated": "2024-01-15T11:39:12.564Z",
+    "id": 524173,
+    "name": "Срочно",
+    "company_id": 194617,
+    "color": 2,
+    "archived": false,
+    "uid": "1d16fde8-a18f-4911-90ba-0728adb6dc81"
+  },
+  {
+    "created": "2024-11-19T08:02:07.516Z",
+    "updated": "2024-11-19T08:02:07.516Z",
+    "id": 722839,
+    "name": "Огни",
+    "company_id": 194617,
+    "color": 2,
+    "archived": false,
+    "uid": "b620ddee-900d-4445-8ce3-107a16d8d73c"
+  },
+  {
+    "created": "2024-11-11T07:17:42.326Z",
+    "updated": "2024-11-11T07:17:42.326Z",
+    "id": 717495,
+    "name": "SYS",
+    "company_id": 194617,
+    "color": 4,
+    "archived": false,
+    "uid": "7547d2f9-be27-4259-8c20-65770e968bf5"
+  },
+  {
+    "created": "2024-09-09T15:17:40.681Z",
+    "updated": "2024-09-09T15:17:40.681Z",
+    "id": 673830,
+    "name": "Работы по проектному финансированию",
+    "company_id": 194617,
+    "color": 16,
+    "archived": false,
+    "uid": "4d806779-92fd-41fa-af19-98de27e8d03f"
+  },
+  {
+    "created": "2025-02-21T10:47:47.700Z",
+    "updated": "2025-02-21T10:47:47.700Z",
+    "id": 783206,
+    "name": "SMM",
+    "company_id": 194617,
+    "color": 2,
+    "archived": false,
+    "uid": "20de1028-1a77-4697-b3e5-f52bfb8bbf57"
+  },
+  {
+    "created": "2024-12-06T13:20:58.301Z",
+    "updated": "2024-12-06T13:20:58.301Z",
+    "id": 735272,
+    "name": "ПОРТ",
+    "company_id": 194617,
+    "color": 9,
+    "archived": false,
+    "uid": "4c88a29f-a4b4-474d-be9b-eb78baeaa772"
+  }
+]
