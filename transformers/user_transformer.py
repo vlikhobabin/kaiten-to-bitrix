@@ -66,10 +66,23 @@ class UserTransformer:
             logger.warning(f"Пользователь {kaiten_user.full_name} не имеет email, пропускаем")
             return {}
         
-        # Разделяем полное имя на имя и фамилию
-        full_name_parts = kaiten_user.full_name.strip().split()
-        first_name = full_name_parts[0] if full_name_parts else "Пользователь"
-        last_name = " ".join(full_name_parts[1:]) if len(full_name_parts) > 1 else "Kaiten"
+        # Обработка имени пользователя
+        if not kaiten_user.full_name or kaiten_user.full_name.strip() == "":
+            # Если нет полного имени, используем username или email
+            if kaiten_user.username:
+                first_name = kaiten_user.username
+                last_name = "Kaiten"
+            else:
+                # Извлекаем имя из email
+                email_name = kaiten_user.email.split('@')[0]
+                first_name = email_name
+                last_name = "Kaiten"
+            logger.info(f"Пользователь без имени: {kaiten_user.email} -> {first_name} {last_name}")
+        else:
+            # Разделяем полное имя на имя и фамилию
+            full_name_parts = kaiten_user.full_name.strip().split()
+            first_name = full_name_parts[0] if full_name_parts else "Пользователь"
+            last_name = " ".join(full_name_parts[1:]) if len(full_name_parts) > 1 else "Kaiten"
         
         user_data = {
             "EMAIL": kaiten_user.email,
@@ -79,5 +92,5 @@ class UserTransformer:
             "GROUP_ID": [12],  # ID=12 - группа доступа "Имена: Сотрудники"
         }
         
-        logger.debug(f"Подготовлены данные для пользователя {kaiten_user.full_name}: {user_data}")
+        logger.debug(f"Подготовлены данные для пользователя {kaiten_user.full_name or kaiten_user.username}: {user_data}")
         return user_data

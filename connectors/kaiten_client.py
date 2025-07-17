@@ -48,17 +48,62 @@ class KaitenClient:
             return [KaitenSpace(**item) for item in data]
         return []
 
-    async def get_users(self) -> List[KaitenUser]:
-        """
-        Получает список всех пользователей.
-        """
-        endpoint = "/api/v1/users"
-        logger.info("Запрос списка пользователей из Kaiten...")
-        data = await self._request("GET", endpoint)
-        if data:
-            logger.success(f"Получено {len(data)} пользователей.")
-            return [KaitenUser(**item) for item in data]
-        return []
+    async def get_users(self, limit: int = 100) -> List[KaitenUser]:
+        """Получить список всех пользователей с поддержкой пагинации"""
+        users = []
+        offset = 0
+        page = 1
+        max_pages = 3  # Ограничиваем максимум 3 страницами (~300 пользователей)
+        
+        while page <= max_pages:
+            try:
+                params = {
+                    'limit': limit,
+                    'offset': offset
+                }
+                
+                logger.info(f"Запрос пользователей: страница {page}, лимит {limit}, смещение {offset}")
+                response = await self._request('GET', '/api/v1/users', params=params)
+                
+                # API Kaiten возвращает массив пользователей напрямую, а не обернутый в объект
+                if not response or not isinstance(response, list):
+                    logger.warning(f"Некорректный ответ API на странице {page}: {response}")
+                    break
+                
+                page_users = response  # Изменено: response уже является массивом
+                logger.info(f"Страница {page}: получено {len(page_users)} пользователей")
+                
+                # Если получили пустой массив, значит больше пользователей нет
+                if not page_users:
+                    logger.info("Получен пустой массив пользователей, завершаем пагинацию")
+                    break
+                
+                # Обрабатываем всех пользователей
+                for user_data in page_users:
+                    try:
+                        user = KaitenUser(**user_data)
+                        users.append(user)
+                        # Показываем первых 3 пользователей для проверки
+                        if len(users) <= 3:
+                            logger.debug(f"Пользователь #{len(users)}: {user.email}")
+                    except Exception as e:
+                        logger.debug(f"Ошибка валидации пользователя {user_data.get('id')}: {e}")
+                
+                # Если получили меньше пользователей чем лимит, значит это последняя страница
+                if len(page_users) < limit:
+                    logger.info(f"Получено {len(page_users)} < {limit}, это последняя страница")
+                    break
+                
+                # Переходим к следующей странице
+                offset += limit
+                page += 1
+                
+            except Exception as e:
+                logger.error(f"Ошибка при получении пользователей на странице {page}: {e}")
+                break
+        
+        logger.success(f"Итого загружено {len(users)} пользователей за {page-1} страниц")
+        return users
         
     async def get_boards(self, space_id: int) -> List[KaitenBoard]:
         """

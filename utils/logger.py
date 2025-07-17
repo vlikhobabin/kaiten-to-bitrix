@@ -3,21 +3,11 @@ from loguru import logger
 
 def get_logger(name: str):
     """
-    Возвращает настроенный экземпляр логгера.
+    Получить логгер с предустановленными настройками
     """
     logger.remove()
-    logger.add(
-        sys.stderr,
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="INFO",
-        colorize=True
-    )
-    logger.add(
-        "logs/app.log",
-        rotation="10 MB",
-        retention="10 days",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="DEBUG",
-        encoding="utf-8"
-    )
-    return logger.bind(name=name)
+    # Консоль - только важная информация (INFO и выше)
+    logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level} | {message}")
+    # Файл - подробные логи (DEBUG и выше)
+    logger.add("logs/app.log", rotation="5 MB", level="DEBUG", format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} - {message}")
+    return logger

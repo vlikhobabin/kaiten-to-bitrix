@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field, validator
 from datetime import datetime
 
 
@@ -11,22 +11,55 @@ class KaitenBaseModel(BaseModel):
     updated: datetime
 
 
-class KaitenUser(KaitenBaseModel):
+class KaitenUser(BaseModel):
+    id: int
+    uid: str
     full_name: str
     email: str
     username: str
+    activated: bool
+    locked: bool
+    delete_requested_at: Optional[str] = None
+    company_id: int
+    user_id: int
+    permissions: int
+    own_permissions: int
+    role: int
+    lng: str = 'ru'
+    timezone: str = 'UTC'
+    theme: str = 'auto'
+    virtual: bool = False
+    email_blocked: Optional[str] = None
+    email_blocked_reason: Optional[str] = None
+    default_space_id: Optional[int] = None
+    email_frequency: int = 2
+    email_settings: Optional[Dict[str, Any]] = None
+    slack_id: Optional[str] = None
+    slack_settings: Optional[Dict[str, Any]] = None
+    notification_settings: Optional[Dict[str, Any]] = None
+    notification_enabled_channels: Optional[List[str]] = None
+    slack_private_channel_id: Optional[str] = None
+    telegram_sd_bot_enabled: bool = False
+    invite_last_sent_at: Optional[str] = None
+    apps_permissions: int = 5
+    external: bool = False
+    last_request_date: Optional[str] = None
+    last_request_method: Optional[str] = None
+    work_time_settings: Optional[Dict[str, Any]] = None
+    personal_settings: Optional[Dict[str, Any]] = None
+    created: Optional[str] = None
+    updated: Optional[str] = None
     avatar_initials_url: Optional[str] = None
     avatar_uploaded_url: Optional[str] = None
-    initials: str
-    avatar_type: int
-    lng: str
-    timezone: str
-    theme: str
-    activated: bool
-    virtual: bool
-    email_blocked: Optional[bool] = None
-    email_blocked_reason: Optional[str] = None
-    delete_requested_at: Optional[datetime] = None
+    initials: Optional[str] = None
+    avatar_type: Optional[int] = None
+    ui_version: int = 2
+
+    @validator('email')
+    def email_must_be_valid(cls, v):
+        if not v or '@' not in v:
+            raise ValueError('Email must be valid')
+        return v
 
 
 class KaitenTag(BaseModel):

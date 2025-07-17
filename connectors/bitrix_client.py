@@ -172,85 +172,150 @@ class BitrixClient:
             return result
         return []
 
-    async def create_user(self, user_data: dict) -> Optional[int]:
-        """
-        Создает нового пользователя в Bitrix24.
-
-        Args:
-            user_data: Словарь с данными пользователя (EMAIL, NAME, LAST_NAME и т.д.).
-
-        Returns:
-            ID созданного пользователя или None в случае ошибки.
-        """
+    async def find_user_by_email(self, email: str) -> Optional[BitrixUser]:
+        """Найти пользователя по email"""
         try:
-            email = user_data.get("EMAIL")
-            logger.info(f"Отправка запроса на создание пользователя с email: {email}...")
+            response = await self._request('GET', 'user.get', {
+                'filter': {'EMAIL': email}
+            })
             
-            # Используем user.add для создания/приглашения пользователя
-            created_user_id = await self._request('POST', 'user.add', user_data)
-
-            if created_user_id and isinstance(created_user_id, int):
-                logger.success(f"Пользователь с email {email} успешно создан с ID: {created_user_id}")
-                return created_user_id
-            else:
-                logger.error(f"Не удалось создать пользователя с email {email}. Ответ API: {created_user_id}")
-                return None
+            if response and isinstance(response, list) and response:
+                user_data = response[0]  # Берем первого найденного
+                return BitrixUser(**user_data)
+            
+            return None
+            
         except Exception as e:
-            logger.error(f"Исключение при создании пользователя в Bitrix24: {e}")
+            logger.warning(f"Ошибка поиска пользователя по email {email}: {e}")
             return None
 
-    async def update_user(self, user_id: str, user_data: dict) -> bool:
-        """
-        Обновляет данные существующего пользователя в Bitrix24.
-
-        Args:
-            user_id: ID пользователя для обновления.
-            user_data: Словарь с новыми данными пользователя (NAME, LAST_NAME и т.д.).
-
-        Returns:
-            True в случае успеха, иначе False.
-        """
+    async def create_user(self, user_data: dict) -> Optional[BitrixUser]:
+        """Создать нового пользователя в Bitrix24"""
         try:
-            email = user_data.get("EMAIL", "неизвестный")
-            logger.info(f"Отправка запроса на обновление пользователя ID {user_id} (email: {email})...")
+            response = await self._request('POST', 'user.add', user_data)
             
-            # Используем user.update для обновления данных пользователя
-            # Передаем ID пользователя в параметрах вместе с данными для обновления
-            update_params = {"ID": user_id, **user_data}
-            result = await self._request('POST', 'user.update', update_params)
-
-            if result is not None:
-                logger.success(f"Пользователь ID {user_id} (email: {email}) успешно обновлен")
-                return True
-            else:
-                logger.error(f"Не удалось обновить пользователя ID {user_id} (email: {email})")
-                return False
+            if response:
+                # response уже является user_id
+                user_id = response
+                full_user = await self.get_user(user_id)
+                if full_user:
+                    logger.success(f"Создан пользователь {user_data.get('EMAIL')} (ID: {user_id})")
+                    return full_user
+            
+            logger.error(f"Ошибка создания пользователя {user_data.get('EMAIL', 'unknown')}")
+            return None
+            
         except Exception as e:
-            logger.error(f"Исключение при обновлении пользователя ID {user_id} в Bitrix24: {e}")
-            return False
+            error_msg = str(e)
+            
+            # Если пользователь уже существует, попытаемся найти его
+            if "уже существует" in error_msg or "already exists" in error_msg.lower():
+                existing_user = await self.find_user_by_email(user_data.get('EMAIL'))
+                if existing_user:
+                    logger.info(f"Найден существующий пользователь {existing_user.EMAIL} (ID: {existing_user.ID})")
+                    return existing_user
+                else:
+                    logger.error(f"Не удалось найти пользователя {user_data.get('EMAIL')}")
+            else:
+                logger.error(f"Ошибка создания пользователя {user_data.get('EMAIL', 'unknown')}: {e}")
+            
+            return None
+
+    async def update_user(self, user_id: str, user_data: dict) -> Optional[BitrixUser]:
+        """Обновить данные пользователя в Bitrix24"""
+        try:
+            # Добавляем ID пользователя к данным для обновления
+            update_data = {'ID': user_id, **user_data}
+            
+            response = await self._request('POST', 'user.update', update_data)
+            
+            if response is True:
+                # Получаем обновленную информацию о пользователе
+                updated_user = await self.get_user(user_id)
+                if updated_user:
+                    return updated_user
+            
+            logger.error(f"Ошибка обновления пользователя ID {user_id}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка обновления пользователя ID {user_id}: {e}")
+            return None
 
     async def get_users(self, params: Optional[dict] = None) -> list[BitrixUser]:
         """
-        Получает список пользователей из Bitrix24.
+        Получает список всех пользователей из Bitrix24 с поддержкой пагинации.
 
         Args:
-            params: Параметры для фильтрации.
+            params: Дополнительные параметры (не используется для совместимости).
 
         Returns:
             Список объектов BitrixUser.
         """
-        if params is None:
-            params = {}
+        all_users = []
+        page = 1
+        max_pages = 4  # До 200 пользователей (4 страницы по 50)
+        
         try:
-            logger.info(f"Запрос пользователей из Bitrix24 с фильтром {params}...")
-            # Метод user.get возвращает список словарей
-            users_data = await self._request('GET', 'user.get', {"filter": params})
+            logger.info("📥 Запрос всех пользователей из Bitrix24 с пагинацией...")
+            
+            while page <= max_pages:
+                # Формула для start: start = (N-1) * 50, где N — номер страницы
+                start = (page - 1) * 50
+                
+                request_params = {
+                    'ADMIN_MODE': 'True',  # Режим администратора для получения всех пользователей
+                    'start': start
+                }
+                
+                logger.info(f"  Страница {page}: start={start}")
+                
+                # Метод user.get возвращает список словарей
+                users_data = await self._request('GET', 'user.get', request_params)
+                
+                # Проверяем что получили корректные данные
+                if not users_data or not isinstance(users_data, list):
+                    logger.warning(f"  Некорректный ответ на странице {page}: {users_data}")
+                    break
+                
+                # Если получили пустой список, значит больше пользователей нет
+                if not users_data:
+                    logger.info(f"  Страница {page}: пустой результат, завершаем пагинацию")
+                    break
+                
+                logger.info(f"  Страница {page}: получено {len(users_data)} пользователей")
+                
+                # Добавляем пользователей к общему списку
+                all_users.extend(users_data)
+                
+                # Если получили меньше 50 пользователей, это последняя страница
+                if len(users_data) < 50:
+                    logger.info(f"  Получено {len(users_data)} < 50, это последняя страница")
+                    break
+                
+                page += 1
             
             # Преобразуем словари в объекты BitrixUser
-            users = [BitrixUser.model_validate(u) for u in users_data]
+            users = [BitrixUser.model_validate(u) for u in all_users]
             
-            logger.success(f"Получено {len(users)} пользователей.")
+            logger.success(f"✅ Получено {len(users)} пользователей из {page-1} страниц")
             return users
+            
         except Exception as e:
             logger.error(f"Ошибка при получении пользователей из Bitrix24: {e}")
             return []
+
+    async def get_user(self, user_id: int) -> Optional[BitrixUser]:
+        """Получить информацию о пользователе по ID"""
+        try:
+            response = await self._request('GET', 'user.get', {'ID': user_id})
+            
+            if response and isinstance(response, list) and response:
+                user_data = response[0]
+                return BitrixUser(**user_data)
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Ошибка получения пользователя с ID {user_id}: {e}")
+            return None
