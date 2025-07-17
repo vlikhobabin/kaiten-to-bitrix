@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 
 from config.settings import settings
 from utils.logger import get_logger
+from models.bitrix_models import BitrixUser
 
 logger = get_logger(__name__)
 
@@ -68,32 +69,37 @@ class BitrixClient:
             return True
         return False
 
-    async def create_workgroup(self, name: str, description: str, owner_id: int, user_ids: List[int]) -> Optional[int]:
+    async def create_workgroup(self, group_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Создает новую рабочую группу (проект).
         
-        :param name: Название группы
-        :param description: Описание группы
-        :param owner_id: ID владельца группы
-        :param user_ids: Список ID участников
-        :return: ID созданной группы или None
+        :param group_data: Словарь с данными группы (NAME, DESCRIPTION, OWNER_ID, USER_IDS и т.д.)
+        :return: Словарь с данными созданной группы или None
         """
         api_method = 'sonet_group.create'
+        # Устанавливаем значения по умолчанию для обязательных полей
         params = {
-            'NAME': name,
-            'DESCRIPTION': description,
-            'OWNER_ID': owner_id,
-            'USER_IDS': user_ids,
             'VISIBLE': 'Y',
-            'OPENED': 'N', # N - по приглашению
-            'PROJECT': 'Y' # Y - это проект, а не группа
+            'OPENED': 'N',  # N - по приглашению
+            'PROJECT': 'Y',  # Y - это проект, а не группа
+            **group_data  # Объединяем с переданными данными
         }
-        logger.info(f"Создание рабочей группы '{name}' в Bitrix24...")
+        
+        group_name = group_data.get('NAME', 'Без названия')
+        logger.info(f"Создание рабочей группы '{group_name}' в Bitrix24...")
         result = await self._request('POST', api_method, params)
         if result:
-            group_id = int(result)
-            logger.success(f"Рабочая группа '{name}' успешно создана с ID {group_id}.")
-            return group_id
+            # result может быть как числом (ID), так и объектом
+            if isinstance(result, (int, str)):
+                group_id = str(result)
+                logger.success(f"Рабочая группа '{group_name}' успешно создана с ID {group_id}.")
+                return {"ID": group_id}
+            elif isinstance(result, dict) and "ID" in result:
+                logger.success(f"Рабочая группа '{group_name}' успешно создана с ID {result['ID']}.")
+                return result
+            else:
+                logger.success(f"Рабочая группа '{group_name}' успешно создана.")
+                return result
         return None
 
     async def create_task(self, title: str, description: str, responsible_id: int, group_id: int, **kwargs) -> Optional[int]:
@@ -152,3 +158,99 @@ class BitrixClient:
             logger.success(f"Получено {len(result['tasks'])} задач.")
             return result['tasks']
         return []
+
+    async def get_workgroup_users(self, group_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список пользователей рабочей группы.
+        """
+        api_method = 'sonet_group.user.get'
+        params = {'ID': group_id}
+        logger.info(f"Запрос пользователей для группы {group_id} из Bitrix24...")
+        result = await self._request('GET', api_method, params)
+        if result:
+            logger.success(f"Получено {len(result)} пользователей для группы {group_id}.")
+            return result
+        return []
+
+    async def create_user(self, user_data: dict) -> Optional[int]:
+        """
+        Создает нового пользователя в Bitrix24.
+
+        Args:
+            user_data: Словарь с данными пользователя (EMAIL, NAME, LAST_NAME и т.д.).
+
+        Returns:
+            ID созданного пользователя или None в случае ошибки.
+        """
+        try:
+            email = user_data.get("EMAIL")
+            logger.info(f"Отправка запроса на создание пользователя с email: {email}...")
+            
+            # Используем user.add для создания/приглашения пользователя
+            created_user_id = await self._request('POST', 'user.add', user_data)
+
+            if created_user_id and isinstance(created_user_id, int):
+                logger.success(f"Пользователь с email {email} успешно создан с ID: {created_user_id}")
+                return created_user_id
+            else:
+                logger.error(f"Не удалось создать пользователя с email {email}. Ответ API: {created_user_id}")
+                return None
+        except Exception as e:
+            logger.error(f"Исключение при создании пользователя в Bitrix24: {e}")
+            return None
+
+    async def update_user(self, user_id: str, user_data: dict) -> bool:
+        """
+        Обновляет данные существующего пользователя в Bitrix24.
+
+        Args:
+            user_id: ID пользователя для обновления.
+            user_data: Словарь с новыми данными пользователя (NAME, LAST_NAME и т.д.).
+
+        Returns:
+            True в случае успеха, иначе False.
+        """
+        try:
+            email = user_data.get("EMAIL", "неизвестный")
+            logger.info(f"Отправка запроса на обновление пользователя ID {user_id} (email: {email})...")
+            
+            # Используем user.update для обновления данных пользователя
+            # Передаем ID пользователя в параметрах вместе с данными для обновления
+            update_params = {"ID": user_id, **user_data}
+            result = await self._request('POST', 'user.update', update_params)
+
+            if result is not None:
+                logger.success(f"Пользователь ID {user_id} (email: {email}) успешно обновлен")
+                return True
+            else:
+                logger.error(f"Не удалось обновить пользователя ID {user_id} (email: {email})")
+                return False
+        except Exception as e:
+            logger.error(f"Исключение при обновлении пользователя ID {user_id} в Bitrix24: {e}")
+            return False
+
+    async def get_users(self, params: Optional[dict] = None) -> list[BitrixUser]:
+        """
+        Получает список пользователей из Bitrix24.
+
+        Args:
+            params: Параметры для фильтрации.
+
+        Returns:
+            Список объектов BitrixUser.
+        """
+        if params is None:
+            params = {}
+        try:
+            logger.info(f"Запрос пользователей из Bitrix24 с фильтром {params}...")
+            # Метод user.get возвращает список словарей
+            users_data = await self._request('GET', 'user.get', {"filter": params})
+            
+            # Преобразуем словари в объекты BitrixUser
+            users = [BitrixUser.model_validate(u) for u in users_data]
+            
+            logger.success(f"Получено {len(users)} пользователей.")
+            return users
+        except Exception as e:
+            logger.error(f"Ошибка при получении пользователей из Bitrix24: {e}")
+            return []

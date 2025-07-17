@@ -2,8 +2,7 @@ import os
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
-# Ищем .env файл в корне проекта и загружаем его
-# Это стандартная практика для python-dotenv
+# Загружаем переменные из стандартного .env файла
 load_dotenv()
 
 class Settings(BaseSettings):
@@ -17,7 +16,7 @@ class Settings(BaseSettings):
     bitrix_webhook_url: str
 
     class Config:
-        # Pydantic-settings по умолчанию ищет .env файл
+        # Стандартная практика - использование .env файла
         env_file = ".env"
         env_file_encoding = 'utf-8'
         extra = 'ignore'
