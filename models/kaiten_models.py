@@ -80,6 +80,8 @@ class KaitenSpace(KaitenBaseModel):
     archived: bool
     for_everyone_access_role_id: Optional[str] = None
     work_calendar_id: Optional[int] = None
+    author_uid: Optional[str] = None
+    description: Optional[str] = None  # Добавляем описание если есть
 
 
 class KaitenCardType(KaitenBaseModel):

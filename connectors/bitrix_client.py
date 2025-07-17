@@ -81,7 +81,7 @@ class BitrixClient:
         params = {
             'VISIBLE': 'Y',
             'OPENED': 'N',  # N - по приглашению
-            'PROJECT': 'Y',  # Y - это проект, а не группа
+            'PROJECT': 'N',  # N - это группа, а не проект
             **group_data  # Объединяем с переданными данными
         }
         

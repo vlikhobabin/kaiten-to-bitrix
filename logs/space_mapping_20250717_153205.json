@@ -1,0 +1,20 @@
+{
+  "created_at": "2025-07-17T15:32:05.602805",
+  "description": "Маппинг ID пространств Kaiten -> рабочих групп Bitrix24",
+  "stats": {
+    "total_spaces": 5,
+    "processed": 5,
+    "created": 0,
+    "updated": 5,
+    "errors": 0,
+    "members_added": 0,
+    "mapping_saved": 5
+  },
+  "mapping": {
+    "566490": "4",
+    "482281": "9",
+    "483051": "10",
+    "489499": "11",
+    "567246": "12"
+  }
+}
