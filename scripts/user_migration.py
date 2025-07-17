@@ -119,15 +119,39 @@ async def main():
                 logger.error(f"💥 Критическая ошибка при обработке {kaiten_user.email}: {e}")
                 stats['errors'] += 1
         
-        # Сохраняем маппинг в файл
-        mapping_file = Path(__file__).parent.parent / "logs" / f"user_mapping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        # Сохраняем/обновляем маппинг в файл
+        mapping_file = Path(__file__).parent.parent / "mappings" / "user_mapping.json"
         mapping_file.parent.mkdir(exist_ok=True)
+        
+        # Если файл существует, загружаем и объединяем данные
+        existing_mapping = {}
+        existing_stats = {"created": 0, "updated": 0, "errors": 0}
+        
+        if mapping_file.exists():
+            try:
+                with open(mapping_file, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+                    existing_mapping = existing_data.get("mapping", {})
+                    existing_stats = existing_data.get("stats", existing_stats)
+                logger.info(f"📂 Загружен существующий маппинг: {len(existing_mapping)} записей")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка загрузки существующего маппинга: {e}")
+        
+        # Объединяем маппинги (новые данные имеют приоритет)
+        combined_mapping = {**existing_mapping, **user_mapping}
+        
+        # Объединяем статистику
+        combined_stats = {
+            "created": existing_stats["created"] + stats["created"],
+            "updated": existing_stats["updated"] + stats["updated"], 
+            "errors": existing_stats["errors"] + stats["errors"]
+        }
         
         mapping_data = {
             "created_at": datetime.now().isoformat(),
             "description": "Маппинг ID пользователей Kaiten -> Bitrix24",
-            "stats": stats,
-            "mapping": user_mapping
+            "stats": combined_stats,
+            "mapping": combined_mapping
         }
         
         with open(mapping_file, 'w', encoding='utf-8') as f:

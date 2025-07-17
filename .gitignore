@@ -246,6 +246,9 @@ config/local_settings.py
 migration_results/
 backup/
 
+# Mapping files directory
+mappings/
+
 # Temporary test files
 temp/
 tmp/

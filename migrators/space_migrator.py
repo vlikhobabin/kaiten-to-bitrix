@@ -22,23 +22,19 @@ class SpaceMigrator:
         self.space_mapping: Dict[str, str] = {}
 
     async def load_user_mapping(self) -> bool:
-        """Загружает маппинг пользователей из последнего файла миграции"""
+        """Загружает маппинг пользователей из файла mapping"""
         try:
-            logs_dir = Path(__file__).parent.parent / "logs"
-            mapping_files = list(logs_dir.glob("user_mapping_*.json"))
+            mapping_file = Path(__file__).parent.parent / "mappings" / "user_mapping.json"
             
-            if not mapping_files:
+            if not mapping_file.exists():
                 logger.error("❌ Не найден файл маппинга пользователей. Запустите сначала миграцию пользователей!")
                 return False
             
-            # Берем последний файл по дате
-            latest_file = max(mapping_files, key=lambda x: x.stat().st_mtime)
-            
-            with open(latest_file, 'r', encoding='utf-8') as f:
+            with open(mapping_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 self.user_mapping = data.get('mapping', {})
             
-            logger.info(f"📥 Загружен маппинг пользователей из {latest_file.name}: {len(self.user_mapping)} записей")
+            logger.info(f"📥 Загружен маппинг пользователей из {mapping_file.name}: {len(self.user_mapping)} записей")
             return True
             
         except Exception as e:
@@ -197,21 +193,43 @@ class SpaceMigrator:
             logger.warning(f"Ошибка при добавлении участников в группу '{space_title}': {e}")
 
     async def _save_space_mapping(self, stats: Dict):
-        """Сохраняет маппинг пространств в файл"""
-        mapping_file = Path(__file__).parent.parent / "logs" / f"space_mapping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        """Сохраняет/обновляет маппинг пространств в файл"""
+        mapping_file = Path(__file__).parent.parent / "mappings" / "space_mapping.json"
         mapping_file.parent.mkdir(exist_ok=True)
+        
+        # Если файл существует, загружаем и объединяем данные
+        existing_mapping = {}
+        existing_stats = {"created": 0, "updated": 0, "members_added": 0, "errors": 0}
+        
+        if mapping_file.exists():
+            try:
+                with open(mapping_file, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+                    existing_mapping = existing_data.get("mapping", {})
+                    existing_stats = existing_data.get("stats", existing_stats)
+                logger.info(f"📂 Загружен существующий маппинг пространств: {len(existing_mapping)} записей")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка загрузки существующего маппинга пространств: {e}")
+        
+        # Объединяем маппинги (новые данные имеют приоритет)
+        combined_mapping = {**existing_mapping, **self.space_mapping}
+        
+        # Объединяем статистику
+        combined_stats = {}
+        for key in existing_stats.keys():
+            combined_stats[key] = existing_stats.get(key, 0) + stats.get(key, 0)
         
         mapping_data = {
             "created_at": datetime.now().isoformat(),
             "description": "Маппинг ID пространств Kaiten -> рабочих групп Bitrix24",
-            "stats": stats,
-            "mapping": self.space_mapping
+            "stats": combined_stats,
+            "mapping": combined_mapping
         }
         
         with open(mapping_file, 'w', encoding='utf-8') as f:
             json.dump(mapping_data, f, ensure_ascii=False, indent=2)
         
-        logger.info(f"💾 Маппинг пространств сохранен в файл: {mapping_file}")
+        logger.info(f"💾 Маппинг пространств сохранен/обновлен в файл: {mapping_file}")
 
     async def _print_final_report(self, stats: Dict):
         """Выводит финальный отчет миграции"""
