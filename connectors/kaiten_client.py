@@ -2,7 +2,7 @@ import httpx
 from typing import List, Optional
 
 from config.settings import settings
-from models.kaiten_models import KaitenSpace, KaitenUser, KaitenBoard, KaitenCard
+from models.kaiten_models import KaitenSpace, KaitenUser, KaitenBoard, KaitenCard, KaitenSpaceMember
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -127,4 +127,60 @@ class KaitenClient:
         if data:
             logger.success(f"Получено {len(data)} карточек для доски {board_id}.")
             return [KaitenCard(**item) for item in data]
+        return []
+
+    async def get_space_members(self, space_id: int) -> List[KaitenSpaceMember]:
+        """
+        Получает список участников пространства.
+        
+        Args:
+            space_id: ID пространства
+            
+        Returns:
+            Список пользователей - участников пространства
+        """
+        # Пробуем разные возможные endpoints для получения участников пространства
+        possible_endpoints = [
+            f"/api/v1/spaces/{space_id}/members",
+            f"/api/v1/spaces/{space_id}/users",  
+            f"/api/v1/spaces/{space_id}/participants"
+        ]
+        
+        for endpoint in possible_endpoints:
+            logger.info(f"Пробую получить участников пространства {space_id} через {endpoint}...")
+            data = await self._request("GET", endpoint)
+            
+            if data is not None:
+                if isinstance(data, list):
+                    # Если получили список пользователей напрямую
+                    logger.success(f"Получено {len(data)} участников пространства {space_id} через {endpoint}")
+                    try:
+                        return [KaitenSpaceMember(**user_data) for user_data in data]
+                    except Exception as e:
+                        logger.warning(f"Ошибка валидации участников пространства {space_id}: {e}")
+                        continue
+                elif isinstance(data, dict) and 'users' in data:
+                    # Если данные обернуты в объект
+                    users = data['users']
+                    logger.success(f"Получено {len(users)} участников пространства {space_id} через {endpoint}")
+                    try:
+                        return [KaitenSpaceMember(**user_data) for user_data in users]
+                    except Exception as e:
+                        logger.warning(f"Ошибка валидации участников пространства {space_id}: {e}")
+                        continue
+                elif isinstance(data, dict) and 'members' in data:
+                    # Если данные обернуты как members
+                    members = data['members']
+                    logger.success(f"Получено {len(members)} участников пространства {space_id} через {endpoint}")
+                    try:
+                        return [KaitenSpaceMember(**user_data) for user_data in members]
+                    except Exception as e:
+                        logger.warning(f"Ошибка валидации участников пространства {space_id}: {e}")
+                        continue
+                else:
+                    logger.warning(f"Неожиданная структура ответа от {endpoint}: {data}")
+                    continue
+        
+        # Если ни один endpoint не сработал, возвращаем пустой список
+        logger.warning(f"Не удалось получить участников пространства {space_id} ни через один из endpoints")
         return []

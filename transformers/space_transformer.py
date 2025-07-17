@@ -7,7 +7,7 @@ class SpaceTransformer:
     Трансформирует и сопоставляет пространства Kaiten с рабочими группами Bitrix24.
     """
 
-    def __init__(self, bitrix_workgroups: List[Dict], user_mapping: Dict[str, str], all_kaiten_spaces: List[KaitenSpace]):
+    def __init__(self, bitrix_workgroups: List[Dict], user_mapping: Dict[str, str], all_kaiten_spaces: List[KaitenSpace], kaiten_client=None):
         """
         Инициализация трансформера пространств.
         
@@ -15,6 +15,7 @@ class SpaceTransformer:
             bitrix_workgroups: Список существующих рабочих групп Bitrix24
             user_mapping: Маппинг Kaiten User ID -> Bitrix User ID
             all_kaiten_spaces: Все пространства Kaiten для построения иерархии
+            kaiten_client: Клиент Kaiten для получения участников пространства
         """
         # Создаем карту название -> ID группы Bitrix24
         self._bitrix_group_map: Dict[str, Dict] = {
@@ -30,6 +31,9 @@ class SpaceTransformer:
         self._kaiten_spaces_map: Dict[str, KaitenSpace] = {
             space.uid: space for space in all_kaiten_spaces
         }
+        
+        # Клиент Kaiten для получения участников
+        self._kaiten_client = kaiten_client
         
         logger.info(f"Карта рабочих групп Bitrix24 создана. Всего групп: {len(self._bitrix_group_map)}")
         logger.info(f"Маппинг пользователей загружен: {len(self._user_mapping)} записей")
@@ -138,21 +142,60 @@ class SpaceTransformer:
         logger.debug(f"Подготовлены данные для группы '{full_name}': {workgroup_data}")
         return workgroup_data
 
-    def get_space_members_bitrix_ids(self, kaiten_space: KaitenSpace) -> List[int]:
+    async def get_space_members_bitrix_ids_async(self, kaiten_space: KaitenSpace) -> List[int]:
         """
-        Получает список ID пользователей Bitrix24 для участников пространства Kaiten.
-        
-        ПРИМЕЧАНИЕ: В текущей версии участники пространства не получаются из API.
-        Этот метод оставлен для будущего расширения.
+        Асинхронно получает список ID пользователей Bitrix24 для участников пространства Kaiten.
         
         Args:
             kaiten_space: Объект пространства Kaiten.
             
         Returns:
-            Пустой список (будет реализовано в будущих версиях).
+            Список ID пользователей в Bitrix24.
         """
-        logger.debug(f"Получение участников для пространства '{kaiten_space.title}' временно отключено")
-        # TODO: Реализовать получение участников пространства через отдельный API запрос
+        if not self._kaiten_client:
+            logger.debug(f"KaitenClient не предоставлен, пропускаем получение участников для пространства '{kaiten_space.title}'")
+            return []
+        
+        try:
+            # Получаем участников пространства из Kaiten API
+            space_members = await self._kaiten_client.get_space_members(kaiten_space.id)
+        except Exception as e:
+            logger.warning(f"Ошибка получения участников пространства '{kaiten_space.title}': {e}")
+            return []
+        
+        if not space_members:
+            logger.debug(f"Участники пространства '{kaiten_space.title}' не найдены или пусты")
+            return []
+        
+        # Сопоставляем участников Kaiten с пользователями Bitrix24
+        bitrix_member_ids = []
+        for member in space_members:
+            # Ищем пользователя в маппинге по ID
+            kaiten_user_id = str(member.id)
+            if kaiten_user_id in self._user_mapping:
+                bitrix_user_id = int(self._user_mapping[kaiten_user_id])
+                bitrix_member_ids.append(bitrix_user_id)
+                logger.debug(f"Участник {member.full_name or member.email} (Kaiten ID: {kaiten_user_id}) сопоставлен с Bitrix ID: {bitrix_user_id}")
+            else:
+                logger.warning(f"Участник пространства {member.full_name or member.email} (Kaiten ID: {kaiten_user_id}) не найден в маппинге пользователей")
+        
+        logger.info(f"Для пространства '{kaiten_space.title}' найдено {len(bitrix_member_ids)} участников из {len(space_members)} в Kaiten")
+        return bitrix_member_ids
+
+    def get_space_members_bitrix_ids(self, kaiten_space: KaitenSpace) -> List[int]:
+        """
+        Получает список ID пользователей Bitrix24 для участников пространства Kaiten.
+        
+        ПРИМЕЧАНИЕ: Синхронная версия возвращает пустой список. 
+        Используйте get_space_members_bitrix_ids_async для реального получения участников.
+        
+        Args:
+            kaiten_space: Объект пространства Kaiten.
+            
+        Returns:
+            Пустой список (используйте асинхронную версию).
+        """
+        logger.debug(f"Вызван синхронный метод для пространства '{kaiten_space.title}'. Используйте асинхронную версию для получения участников")
         return []
 
     def get_space_owner_bitrix_id(self, kaiten_space: KaitenSpace) -> Optional[int]:

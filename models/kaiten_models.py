@@ -145,7 +145,7 @@ class KaitenBoard(KaitenBaseModel):
     type: int
 
 
-class KaitenCardFile(BaseModel):
+class KaitenCardFile(KaitenBaseModel):
     id: int
     url: str
     name: str
@@ -163,6 +163,30 @@ class KaitenCardFile(BaseModel):
     updated: datetime
     uid: str
     custom_property_id: Optional[int] = None
+
+class KaitenSpaceMember(KaitenBaseModel):
+    """Модель для участника пространства (отличается от обычного пользователя)"""
+    # Обязательные поля
+    id: int
+    uid: str
+    email: str
+    username: str
+    full_name: str
+    
+    # Опциональные поля для участников пространства
+    locked: Optional[bool] = None
+    company_id: Optional[int] = None
+    user_id: Optional[int] = None
+    permissions: Optional[List[str]] = None
+    own_permissions: Optional[List[str]] = None
+    role: Optional[str] = None
+    activated: Optional[bool] = None
+    blocked: Optional[bool] = None
+    space_role_id: Optional[int] = None
+    
+    # Дополнительные поля участников
+    invite_requested_at: Optional[datetime] = None
+    delete_requested_at: Optional[datetime] = None
 
 
 class KaitenCard(KaitenBaseModel):

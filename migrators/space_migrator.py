@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
+import asyncio
 
 from connectors.kaiten_client import KaitenClient
 from connectors.bitrix_client import BitrixClient
@@ -80,53 +81,42 @@ class SpaceMigrator:
         # Получаем существующие рабочие группы из Bitrix24
         logger.info("📥 Получение существующих рабочих групп из Bitrix24...")
         bitrix_workgroups = await self.bitrix_client.get_workgroup_list()
-        logger.info(f"👥 В Bitrix24 найдено {len(bitrix_workgroups)} рабочих групп")
+        logger.info(f"📊 Найдено {len(bitrix_workgroups)} существующих рабочих групп в Bitrix24")
         
-        # Создаем трансформер с полным списком пространств для построения иерархии
-        transformer = SpaceTransformer(bitrix_workgroups, self.user_mapping, kaiten_spaces)
+        # Создаем трансформер с передачей KaitenClient для получения участников
+        transformer = SpaceTransformer(bitrix_workgroups, self.user_mapping, kaiten_spaces, self.kaiten_client)
         
-        # Статистика
+        # Статистика миграции
         stats = {
-            'total_spaces': len(spaces_to_process),
             'processed': 0,
             'created': 0,
             'updated': 0,
             'errors': 0,
-            'members_added': 0,
-            'mapping_saved': 0
+            'members_added': 0
         }
-        
-        logger.info("=" * 80)
-        logger.info(f"⚙️ ОБРАБОТКА {len(spaces_to_process)} ПРОСТРАНСТВ...")
-        logger.info("=" * 80)
         
         # Обрабатываем каждое пространство
         for i, kaiten_space in enumerate(spaces_to_process, 1):
-            stats['processed'] += 1
+            space_title = transformer._build_hierarchical_name(kaiten_space)
+            logger.info(f"🔄 [{i}/{len(spaces_to_process)}] Обрабатываем пространство: '{space_title}'")
             
-            # Показываем прогресс
-            if stats['processed'] % 5 == 0 or stats['processed'] == len(spaces_to_process):
-                logger.info(f"📈 Прогресс: {stats['processed']}/{len(spaces_to_process)} "
-                           f"({stats['processed']/len(spaces_to_process)*100:.1f}%)")
+            await self._process_single_space(kaiten_space, transformer, stats)
             
-            try:
-                await self._migrate_single_space(kaiten_space, transformer, stats)
-                
-            except Exception as e:
-                logger.error(f"💥 Критическая ошибка при обработке пространства '{kaiten_space.title}': {e}")
-                stats['errors'] += 1
+            # Небольшая пауза между обработкой пространств
+            if i < len(spaces_to_process):
+                await asyncio.sleep(0.5)
         
-        # Сохраняем маппинг
+        # Сохраняем маппинг пространств
         await self._save_space_mapping(stats)
         
-        # Финальный отчет
-        await self._print_final_report(stats)
-        
+        logger.info("🎉 МИГРАЦИЯ ПРОСТРАНСТВ ЗАВЕРШЕНА")
+        logger.info("=" * 80)
         return stats
 
-    async def _migrate_single_space(self, kaiten_space: KaitenSpace, transformer: SpaceTransformer, stats: Dict):
-        """Мигрирует одно пространство"""
-        space_title = kaiten_space.title or f"Space-{kaiten_space.id}"
+    async def _process_single_space(self, kaiten_space: KaitenSpace, transformer: SpaceTransformer, stats: Dict):
+        """Обрабатывает одно пространство: создает группу и добавляет участников"""
+        space_title = transformer._build_hierarchical_name(kaiten_space)
+        stats['processed'] += 1
         
         # Проверяем, существует ли группа в Bitrix24
         existing_group = transformer.find_existing_workgroup(kaiten_space)
@@ -141,14 +131,13 @@ class SpaceMigrator:
         bitrix_group = None
         
         if existing_group:
-            # Группа уже существует - можно обновить описание
+            # Группа уже существует
             logger.debug(f"🔄 Группа для '{space_title}' уже существует (ID: {existing_group.get('ID')})")
             bitrix_group = existing_group
             stats['updated'] += 1
             
             # Сохраняем в маппинг
             self.space_mapping[str(kaiten_space.id)] = str(existing_group.get('ID'))
-            stats['mapping_saved'] += 1
         else:
             # Создаем новую группу
             logger.debug(f"➕ Создание новой группы для пространства '{space_title}'")
@@ -164,8 +153,7 @@ class SpaceMigrator:
             if bitrix_group and bitrix_group.get('ID'):
                 stats['created'] += 1
                 self.space_mapping[str(kaiten_space.id)] = str(bitrix_group['ID'])
-                stats['mapping_saved'] += 1
-                logger.debug(f"✅ Создана группа '{space_title}' (Kaiten ID: {kaiten_space.id} -> Bitrix ID: {bitrix_group['ID']})")
+                logger.success(f"✅ Создана группа '{space_title}' (Kaiten ID: {kaiten_space.id} -> Bitrix ID: {bitrix_group['ID']})")
             else:
                 stats['errors'] += 1
                 logger.warning(f"❌ Ошибка создания группы для пространства '{space_title}'")
@@ -173,21 +161,40 @@ class SpaceMigrator:
         
         # Добавляем участников в группу
         if bitrix_group and bitrix_group.get('ID'):
-            group_id = int(bitrix_group['ID'])
-            member_ids = transformer.get_space_members_bitrix_ids(kaiten_space)
+            await self._add_members_to_group(kaiten_space, transformer, bitrix_group, stats, space_title)
+
+    async def _add_members_to_group(self, kaiten_space: KaitenSpace, transformer: SpaceTransformer, bitrix_group: Dict, stats: Dict, space_title: str):
+        """Добавляет участников пространства в рабочую группу Bitrix24"""
+        group_id = int(bitrix_group['ID'])
+        
+        try:
+            # Используем асинхронный метод для получения участников
+            member_ids = await transformer.get_space_members_bitrix_ids_async(kaiten_space)
             
-            if member_ids:
-                logger.debug(f"👥 Добавление {len(member_ids)} участников в группу '{space_title}'")
+            if not member_ids:
+                logger.debug(f"👥 Участники для пространства '{space_title}' не найдены")
+                return
+            
+            logger.info(f"👥 Добавление {len(member_ids)} участников в группу '{space_title}'")
+            
+            # Добавляем каждого участника в группу
+            added_count = 0
+            for member_id in member_ids:
+                try:
+                    success = await self.bitrix_client.add_user_to_workgroup(group_id, member_id)
+                    if success:
+                        added_count += 1
+                        stats['members_added'] += 1
+                except Exception as e:
+                    logger.debug(f"Ошибка добавления участника {member_id} в группу {group_id}: {e}")
+            
+            if added_count > 0:
+                logger.success(f"✅ Добавлено {added_count} участников в группу '{space_title}'")
+            else:
+                logger.warning(f"⚠️ Не удалось добавить участников в группу '{space_title}'")
                 
-                for member_id in member_ids:
-                    try:
-                        success = await self.bitrix_client.add_user_to_workgroup(group_id, member_id)
-                        if success:
-                            stats['members_added'] += 1
-                    except Exception as e:
-                        logger.debug(f"Ошибка добавления участника {member_id} в группу {group_id}: {e}")
-                
-                logger.debug(f"✅ Участники добавлены в группу '{space_title}'")
+        except Exception as e:
+            logger.warning(f"Ошибка при добавлении участников в группу '{space_title}': {e}")
 
     async def _save_space_mapping(self, stats: Dict):
         """Сохраняет маппинг пространств в файл"""
