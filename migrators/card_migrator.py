@@ -657,10 +657,25 @@ class CardMigrator:
             True в случае успеха
         """
         try:
-            # Если это обновление, сначала очищаем существующие чек-листы
+            # Если это обновление, проверяем существующие чек-листы
+            existing_checklists = []
             if is_update:
-                logger.debug(f"Очищаем существующие чек-листы задачи {task_id}")
-                await self.bitrix_client.clear_task_checklists(task_id)
+                logger.info(f"🔍 Проверяем существующие чек-листы задачи {task_id}...")
+                existing_items = await self.bitrix_client.get_task_checklists(task_id)
+                
+                # Собираем названия существующих групп чек-листов
+                for item in existing_items:
+                    parent_id = item.get('PARENT_ID') or item.get('parent_id')
+                    # Это группа (корневой элемент)
+                    if not parent_id or parent_id == 'N/A' or str(parent_id) == '0':
+                        title = item.get('TITLE') or item.get('title', '')
+                        if title and title not in existing_checklists:
+                            existing_checklists.append(title)
+                
+                if existing_checklists:
+                    logger.info(f"📋 Найдено {len(existing_checklists)} групп чек-листов: {', '.join(existing_checklists[:3])}{'...' if len(existing_checklists) > 3 else ''}")
+                else:
+                    logger.debug(f"✅ У задачи {task_id} нет чек-листов")
             
             # Получаем чек-листы карточки из Kaiten
             checklists = await self.kaiten_client.get_card_checklists(card_id)
@@ -676,39 +691,47 @@ class CardMigrator:
             
             for checklist in checklists:
                 try:
-                    checklist_title = checklist.get('title', 'Без названия')
+                    # Используем поле 'name' для названия чек-листа (как в Kaiten API)
+                    checklist_title = checklist.get('name', checklist.get('title', 'Без названия'))
                     checklist_items = checklist.get('items', [])
                     
-                    logger.debug(f"   📋 Чек-лист '{checklist_title}' с {len(checklist_items)} элементами")
+                    # Проверяем, существует ли уже такой чек-лист при обновлении
+                    if is_update and checklist_title in existing_checklists:
+                        logger.debug(f"   ⏭️ Чек-лист '{checklist_title}' уже существует, пропускаем")
+                        continue
                     
-                    # В Bitrix24 создаем элементы чек-листа напрямую, без создания отдельного чек-листа
-                    # Если нужно группировать, можно добавить заголовок как первый элемент
-                    if len(checklists) > 1:
-                        # Если чек-листов больше одного, добавляем заголовок
-                        await self.bitrix_client.add_checklist_item(
-                            task_id=task_id,
-                            title=f"=== {checklist_title} ===",
-                            is_complete=False
-                        )
-                        migrated_items += 1
+                    logger.debug(f"   📋 Добавляем чек-лист '{checklist_title}' с {len(checklist_items)} элементами")
                     
-                    # Переносим элементы чек-листа
+                    # Создаем группу чек-листа с правильным названием
+                    group_id = await self.bitrix_client.create_checklist_group(
+                        task_id=task_id,
+                        title=checklist_title
+                    )
+                    
+                    if group_id:
+                        migrated_checklists += 1
+                        logger.debug(f"✅ Создана группа чек-листа '{checklist_title}' с ID {group_id}")
+                    else:
+                        logger.warning(f"⚠️ Не удалось создать группу для чек-листа '{checklist_title}', элементы будут добавлены без группы")
+                        group_id = None  # Элементы будут добавлены как отдельные элементы
+                    
+                    # Переносим элементы чек-листа как дочерние к группе (или отдельно, если группа не создалась)
                     for item in checklist_items:
-                        item_title = item.get('text', item.get('title', ''))
+                        item_text = item.get('text', item.get('title', ''))
                         is_complete = item.get('checked', False) or item.get('completed', False)
                         
-                        if item_title.strip():
+                        if item_text.strip():
                             await self.bitrix_client.add_checklist_item(
                                 task_id=task_id,
-                                title=item_title,
-                                is_complete=is_complete
+                                title=item_text,  # Убираем отступ и эмодзи - теперь это обычные элементы
+                                is_complete=is_complete,
+                                parent_id=group_id  # Указываем ID группы как родительский элемент (или None)
                             )
                             migrated_items += 1
                     
-                    migrated_checklists += 1
-                    
                 except Exception as e:
-                    logger.warning(f"Ошибка переноса чек-листа '{checklist.get('title', 'unknown')}': {e}")
+                    checklist_name = checklist.get('name', checklist.get('title', 'unknown'))
+                    logger.warning(f"Ошибка переноса чек-листа '{checklist_name}': {e}")
                     continue
             
             if migrated_checklists > 0:

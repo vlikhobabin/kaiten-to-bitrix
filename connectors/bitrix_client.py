@@ -469,17 +469,45 @@ class BitrixClient:
 
     # ========== МЕТОДЫ ДЛЯ РАБОТЫ С ЧЕК-ЛИСТАМИ ЗАДАЧ ==========
     
-
+    async def create_checklist_group(self, task_id: int, title: str) -> Optional[int]:
+        """
+        Создает группу чек-листа с названием.
+        
+        :param task_id: ID задачи
+        :param title: Название группы чек-листа
+        :return: ID созданной группы или None
+        """
+        api_method = 'task.checklistitem.add'
+        # Группа чек-листа создается с PARENT_ID = 0
+        params = {
+            'taskId': task_id,
+            'fields': {
+                'TITLE': title,
+                'PARENT_ID': 0,  # 0 означает, что это группа (корневой элемент)
+                'IS_COMPLETE': False,
+                'SORT_INDEX': '10'
+            }
+        }
+        
+        logger.debug(f"Создание группы чек-листа '{title}' для задачи {task_id}...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            group_id = result
+            logger.debug(f"Группа чек-листа '{title}' создана с ID {group_id}")
+            return group_id
+        else:
+            logger.warning(f"Не удалось создать группу чек-листа '{title}' для задачи {task_id}")
+            return None
 
     async def add_checklist_item(self, task_id: int, title: str, is_complete: bool = False, 
-                                checklist_id: int = None) -> Optional[int]:
+                                parent_id: int = None) -> Optional[int]:
         """
         Добавляет элемент в чек-лист задачи.
         
         :param task_id: ID задачи
         :param title: Текст элемента чек-листа
         :param is_complete: Выполнен ли элемент (по умолчанию False)
-        :param checklist_id: ID чек-листа (опционально)
+        :param parent_id: ID родительского элемента (для группы)
         :return: ID созданного элемента или None
         """
         api_method = 'task.checklistitem.add'  # Исправленный метод
@@ -492,8 +520,8 @@ class BitrixClient:
             }
         }
         
-        if checklist_id:
-            params['fields']['parentId'] = checklist_id
+        if parent_id:
+            params['fields']['PARENT_ID'] = parent_id
         
         logger.debug(f"Добавление элемента '{title}' в чек-лист задачи {task_id}...")
         result = await self._request('POST', api_method, params)
@@ -558,12 +586,38 @@ class BitrixClient:
             
             # Удаляем все элементы
             deleted_count = 0
+            errors_count = 0
+            
             for item in items:
                 item_id = item.get('ID') or item.get('id')
-                if item_id and await self.delete_checklist_item(int(item_id)):
-                    deleted_count += 1
+                if item_id:
+                    try:
+                        # Попытка удаления элемента
+                        async with httpx.AsyncClient() as client:
+                            url = f"{self.webhook_url.rstrip('/')}/task.checklistitem.delete"
+                            params = {'itemId': int(item_id)}
+                            response = await client.post(url, json=params)
+                            
+                            # Если удаление прошло успешно или элемент уже не существует
+                            if response.status_code == 200:
+                                result = response.json()
+                                if result.get('result') or 'error' not in result:
+                                    deleted_count += 1
+                                else:
+                                    # Игнорируем ошибки о несуществующих элементах
+                                    errors_count += 1
+                            else:
+                                errors_count += 1
+                                
+                    except Exception as e:
+                        errors_count += 1
+                        # Игнорируем ошибки удаления - элементы могут уже не существовать
+                        continue
             
-            logger.debug(f"Удалено {deleted_count} из {len(items)} элементов чек-листов")
+            if errors_count > 0:
+                logger.debug(f"При очистке возникло {errors_count} ошибок (возможно, элементы уже удалены)")
+            
+            logger.debug(f"Процесс очистки завершен для задачи {task_id}")
             return True
             
         except Exception as e:

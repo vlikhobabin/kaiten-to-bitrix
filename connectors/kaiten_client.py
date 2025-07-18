@@ -301,35 +301,21 @@ class KaitenClient:
             # Ищем поля, связанные с чек-листами
             checklists = []
             
-            # Проверяем различные возможные поля
-            possible_checklist_fields = [
-                'checklists',
-                'checklist',
-                'checkLists', 
-                'check_lists',
-                'task_checklists',
-                'parent_checklist_ids'
-            ]
-            
-            for field in possible_checklist_fields:
-                if field in card_data and card_data[field]:
-                    field_value = card_data[field]
-                    logger.debug(f"Найдено поле {field}: {field_value}")
-                    
-                    if isinstance(field_value, list) and field_value:
-                        # Если это массив ID чек-листов, получаем их по отдельности
-                        if field == 'parent_checklist_ids':
-                            for checklist_id in field_value:
-                                try:
-                                    checklist_data = await self._request("GET", f"/api/v1/checklists/{checklist_id}")
-                                    if checklist_data:
-                                        checklists.append(checklist_data)
-                                except Exception as e:
-                                    logger.debug(f"Ошибка получения чек-листа {checklist_id}: {e}")
-                        else:
-                            # Если это уже готовые данные чек-листов
-                            checklists = field_value
-                        break
+            # Ищем поле checklists в данных карточки
+            if 'checklists' in card_data and card_data['checklists']:
+                checklists = card_data['checklists']
+                logger.debug(f"Найдено поле checklists с {len(checklists)} чек-листами")
+            # Дополнительно проверяем parent_checklist_ids для случая, если чек-листы хранятся отдельно
+            elif 'parent_checklist_ids' in card_data and card_data['parent_checklist_ids']:
+                checklist_ids = card_data['parent_checklist_ids']
+                logger.debug(f"Найдено поле parent_checklist_ids: {checklist_ids}")
+                for checklist_id in checklist_ids:
+                    try:
+                        checklist_data = await self._request("GET", f"/api/v1/checklists/{checklist_id}")
+                        if checklist_data:
+                            checklists.append(checklist_data)
+                    except Exception as e:
+                        logger.debug(f"Ошибка получения чек-листа {checklist_id}: {e}")
             
             if checklists:
                 logger.debug(f"Найдено {len(checklists)} чек-листов для карточки {card_id}")
