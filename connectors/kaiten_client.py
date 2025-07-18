@@ -278,3 +278,66 @@ class KaitenClient:
         else:
             logger.warning(f"Подколонки для доски {board_id} не найдены")
             return []
+
+    async def get_card_checklists(self, card_id: int) -> List[dict]:
+        """
+        Получает все чек-листы указанной карточки.
+        
+        Args:
+            card_id: ID карточки Kaiten
+            
+        Returns:
+            Список чек-листов карточки
+        """
+        try:
+            # Получаем полную информацию о карточке
+            logger.debug(f"Получаем полную информацию о карточке {card_id} для поиска чек-листов...")
+            card_data = await self._request("GET", f"/api/v1/cards/{card_id}")
+            
+            if not card_data:
+                logger.debug(f"Не удалось получить данные карточки {card_id}")
+                return []
+            
+            # Ищем поля, связанные с чек-листами
+            checklists = []
+            
+            # Проверяем различные возможные поля
+            possible_checklist_fields = [
+                'checklists',
+                'checklist',
+                'checkLists', 
+                'check_lists',
+                'task_checklists',
+                'parent_checklist_ids'
+            ]
+            
+            for field in possible_checklist_fields:
+                if field in card_data and card_data[field]:
+                    field_value = card_data[field]
+                    logger.debug(f"Найдено поле {field}: {field_value}")
+                    
+                    if isinstance(field_value, list) and field_value:
+                        # Если это массив ID чек-листов, получаем их по отдельности
+                        if field == 'parent_checklist_ids':
+                            for checklist_id in field_value:
+                                try:
+                                    checklist_data = await self._request("GET", f"/api/v1/checklists/{checklist_id}")
+                                    if checklist_data:
+                                        checklists.append(checklist_data)
+                                except Exception as e:
+                                    logger.debug(f"Ошибка получения чек-листа {checklist_id}: {e}")
+                        else:
+                            # Если это уже готовые данные чек-листов
+                            checklists = field_value
+                        break
+            
+            if checklists:
+                logger.debug(f"Найдено {len(checklists)} чек-листов для карточки {card_id}")
+                return checklists
+            else:
+                logger.debug(f"Чек-листы для карточки {card_id} не найдены")
+                return []
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении чек-листов карточки {card_id}: {e}")
+            return []

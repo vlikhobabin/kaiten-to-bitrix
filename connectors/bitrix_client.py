@@ -385,7 +385,7 @@ class BitrixClient:
             logger.warning(f"Ошибка получения пользователя с ID {user_id}: {e}")
             return None
 
-    # ========== МЕТОДЫ ДЛЯ РАБОТЫ СО СТАДИЯМИ ЗАДАЧ ==========
+    # ========== МЕТОДЫ ДЛЯ РАБОТЫ С СТАДИЯМИ ЗАДАЧ ==========
     
     async def get_task_stages(self, entity_id: int) -> List[Dict[str, Any]]:
         """
@@ -466,3 +466,106 @@ class BitrixClient:
             logger.success(f"Стадия {stage_id} успешно удалена.")
             return True
         return False
+
+    # ========== МЕТОДЫ ДЛЯ РАБОТЫ С ЧЕК-ЛИСТАМИ ЗАДАЧ ==========
+    
+
+
+    async def add_checklist_item(self, task_id: int, title: str, is_complete: bool = False, 
+                                checklist_id: int = None) -> Optional[int]:
+        """
+        Добавляет элемент в чек-лист задачи.
+        
+        :param task_id: ID задачи
+        :param title: Текст элемента чек-листа
+        :param is_complete: Выполнен ли элемент (по умолчанию False)
+        :param checklist_id: ID чек-листа (опционально)
+        :return: ID созданного элемента или None
+        """
+        api_method = 'task.checklistitem.add'  # Исправленный метод
+        # Правильная структура с полем TITLE
+        params = {
+            'taskId': task_id,
+            'fields': {
+                'TITLE': title,
+                'IS_COMPLETE': is_complete
+            }
+        }
+        
+        if checklist_id:
+            params['fields']['parentId'] = checklist_id
+        
+        logger.debug(f"Добавление элемента '{title}' в чек-лист задачи {task_id}...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            item_id = result
+            logger.debug(f"Элемент чек-листа '{title}' создан с ID {item_id}")
+            return item_id
+        else:
+            logger.warning(f"Не удалось создать элемент чек-листа '{title}' для задачи {task_id}")
+            return None
+
+    async def get_task_checklists(self, task_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает чек-листы задачи.
+        
+        :param task_id: ID задачи
+        :return: Список чек-листов задачи
+        """
+        api_method = 'task.checklistitem.getlist'  # Исправленный метод
+        params = {'taskId': task_id}  # Исправленный параметр
+        logger.debug(f"Запрос чек-листов для задачи {task_id}...")
+        result = await self._request('GET', api_method, params)
+        if result:
+            logger.debug(f"Получено {len(result)} элементов чек-листов для задачи {task_id}")
+            return result
+        return []
+
+    async def delete_checklist_item(self, item_id: int) -> bool:
+        """
+        Удаляет элемент чек-листа.
+        
+        :param item_id: ID элемента чек-листа
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'task.checklistitem.delete'  # Исправленный метод
+        params = {'itemId': item_id}  # Правильный параметр
+        logger.debug(f"Удаление элемента чек-листа {item_id}...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            logger.debug(f"Элемент чек-листа {item_id} удален")
+            return True
+        else:
+            logger.warning(f"Не удалось удалить элемент чек-листа {item_id}")
+            return False
+
+    async def clear_task_checklists(self, task_id: int) -> bool:
+        """
+        Очищает все чек-листы задачи.
+        
+        :param task_id: ID задачи
+        :return: True в случае успеха
+        """
+        try:
+            # Получаем все элементы чек-листов
+            items = await self.get_task_checklists(task_id)
+            
+            if not items:
+                logger.debug(f"У задачи {task_id} нет чек-листов для очистки")
+                return True
+            
+            logger.debug(f"Очистка {len(items)} элементов чек-листов задачи {task_id}...")
+            
+            # Удаляем все элементы
+            deleted_count = 0
+            for item in items:
+                item_id = item.get('ID') or item.get('id')
+                if item_id and await self.delete_checklist_item(int(item_id)):
+                    deleted_count += 1
+            
+            logger.debug(f"Удалено {deleted_count} из {len(items)} элементов чек-листов")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Ошибка очистки чек-листов задачи {task_id}: {e}")
+            return False

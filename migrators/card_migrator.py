@@ -79,7 +79,9 @@ class CardMigrator:
             'cards_migrated': 0,
             'cards_updated': 0,  # Счетчик обновленных карточек
             'cards_failed': 0,
-            'boards_processed': 0
+            'boards_processed': 0,
+            'checklists_migrated': 0,  # Счетчик перенесенных чек-листов
+            'checklist_items_migrated': 0  # Счетчик перенесенных элементов чек-листов
         }
 
     async def load_user_mapping(self) -> bool:
@@ -584,6 +586,9 @@ class CardMigrator:
                 self.card_mapping[str(card.id)] = str(task_id)
                 await self.save_card_mapping()
                 
+                # Мигрируем чек-листы
+                await self.migrate_card_checklists(card.id, task_id, card.title)
+                
                 self.stats['cards_migrated'] += 1
             else:
                 logger.error(f"❌ Не удалось создать задачу для карточки '{card.title}'")
@@ -625,6 +630,10 @@ class CardMigrator:
             
             if success:
                 logger.success(f"✅ Обновлена задача ID {task_id} из карточки '{card.title}' (стадия '{target_stage}')")
+                
+                # Мигрируем чек-листы (при обновлении тоже синхронизируем)
+                await self.migrate_card_checklists(card.id, task_id, card.title, is_update=True)
+                
                 self.stats['cards_updated'] += 1
             else:
                 logger.error(f"❌ Не удалось обновить задачу ID {task_id} для карточки '{card.title}'")
@@ -633,6 +642,85 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка обновления задачи ID {task_id} для карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
+
+    async def migrate_card_checklists(self, card_id: int, task_id: int, card_title: str, is_update: bool = False) -> bool:
+        """
+        Мигрирует чек-листы карточки Kaiten в чек-листы задачи Bitrix24.
+        
+        Args:
+            card_id: ID карточки Kaiten
+            task_id: ID задачи Bitrix24
+            card_title: Название карточки (для логирования)
+            is_update: Если True, то это обновление (нужно очистить старые чек-листы)
+            
+        Returns:
+            True в случае успеха
+        """
+        try:
+            # Если это обновление, сначала очищаем существующие чек-листы
+            if is_update:
+                logger.debug(f"Очищаем существующие чек-листы задачи {task_id}")
+                await self.bitrix_client.clear_task_checklists(task_id)
+            
+            # Получаем чек-листы карточки из Kaiten
+            checklists = await self.kaiten_client.get_card_checklists(card_id)
+            
+            if not checklists:
+                logger.debug(f"У карточки '{card_title}' нет чек-листов")
+                return True
+            
+            logger.info(f"📋 Переносим {len(checklists)} чек-листов для карточки '{card_title}'")
+            
+            migrated_checklists = 0
+            migrated_items = 0
+            
+            for checklist in checklists:
+                try:
+                    checklist_title = checklist.get('title', 'Без названия')
+                    checklist_items = checklist.get('items', [])
+                    
+                    logger.debug(f"   📋 Чек-лист '{checklist_title}' с {len(checklist_items)} элементами")
+                    
+                    # В Bitrix24 создаем элементы чек-листа напрямую, без создания отдельного чек-листа
+                    # Если нужно группировать, можно добавить заголовок как первый элемент
+                    if len(checklists) > 1:
+                        # Если чек-листов больше одного, добавляем заголовок
+                        await self.bitrix_client.add_checklist_item(
+                            task_id=task_id,
+                            title=f"=== {checklist_title} ===",
+                            is_complete=False
+                        )
+                        migrated_items += 1
+                    
+                    # Переносим элементы чек-листа
+                    for item in checklist_items:
+                        item_title = item.get('text', item.get('title', ''))
+                        is_complete = item.get('checked', False) or item.get('completed', False)
+                        
+                        if item_title.strip():
+                            await self.bitrix_client.add_checklist_item(
+                                task_id=task_id,
+                                title=item_title,
+                                is_complete=is_complete
+                            )
+                            migrated_items += 1
+                    
+                    migrated_checklists += 1
+                    
+                except Exception as e:
+                    logger.warning(f"Ошибка переноса чек-листа '{checklist.get('title', 'unknown')}': {e}")
+                    continue
+            
+            if migrated_checklists > 0:
+                logger.success(f"✅ Перенесено {migrated_checklists} чек-листов, {migrated_items} элементов")
+                self.stats['checklists_migrated'] += migrated_checklists
+                self.stats['checklist_items_migrated'] += migrated_items
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка миграции чек-листов для карточки '{card_title}': {e}")
+            return False
 
     def print_migration_stats(self):
         """Выводит статистику миграции"""
@@ -645,4 +733,7 @@ class CardMigrator:
         logger.info(f"Карточек создано: {self.stats['cards_migrated']}")
         logger.info(f"Карточек обновлено: {self.stats['cards_updated']}")
         logger.info(f"Карточек с ошибками: {self.stats['cards_failed']}")
+        if self.stats['checklists_migrated'] > 0 or self.stats['checklist_items_migrated'] > 0:
+            logger.info(f"Чек-листов перенесено: {self.stats['checklists_migrated']}")
+            logger.info(f"Элементов чек-листов: {self.stats['checklist_items_migrated']}")
         logger.info("="*50) 
