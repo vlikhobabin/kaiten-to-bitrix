@@ -77,8 +77,8 @@ class CardMigrator:
             'cards_total': 0,
             'cards_filtered_out': 0,
             'cards_migrated': 0,
+            'cards_updated': 0,  # Счетчик обновленных карточек
             'cards_failed': 0,
-            'cards_skipped': 0,  # Добавляем счетчик пропущенных карточек
             'boards_processed': 0
         }
 
@@ -281,7 +281,7 @@ class CardMigrator:
         return True
 
     async def migrate_cards_from_space(self, space_id: int, target_group_id: int, 
-                                     list_only: bool = False, limit: int = None) -> bool:
+                                     list_only: bool = False, limit: int = None, card_id: int = None) -> bool:
         """
         Мигрирует карточки из всех досок указанного пространства.
         
@@ -290,11 +290,16 @@ class CardMigrator:
             target_group_id: ID группы в Bitrix24
             list_only: Если True, только выводит список карточек без миграции
             limit: Если указан, обрабатывает только первые N карточек первой доски
+            card_id: Если указан, обрабатывает только конкретную карточку
             
         Returns:
             True в случае успеха
         """
         try:
+            # Обработка конкретной карточки
+            if card_id:
+                return await self.migrate_single_card_by_id(card_id, target_group_id, list_only)
+            
             logger.info(f"🚀 Начинаем обработку пространства {space_id}")
             
             # Загружаем маппинги пользователей и карточек
@@ -351,6 +356,61 @@ class CardMigrator:
             logger.error(f"Ошибка миграции карточек из пространства {space_id}: {e}")
             return False
 
+    async def migrate_single_card_by_id(self, card_id: int, target_group_id: int, list_only: bool = False) -> bool:
+        """
+        Мигрирует конкретную карточку по ее ID.
+        
+        Args:
+            card_id: ID карточки Kaiten
+            target_group_id: ID группы в Bitrix24
+            list_only: Если True, только выводит информацию о карточке
+            
+        Returns:
+            True в случае успеха
+        """
+        try:
+            logger.info(f"🎯 Обработка конкретной карточки {card_id}")
+            
+            # Загружаем маппинги пользователей и карточек
+            if not await self.load_user_mapping():
+                return False
+            
+            if not await self.load_card_mapping():
+                return False
+            
+            # Получаем карточку по ID
+            logger.info(f"📥 Получение карточки {card_id} из Kaiten...")
+            card = await self.kaiten_client.get_card_by_id(card_id)
+            
+            if not card:
+                logger.error(f"❌ Карточка {card_id} не найдена в Kaiten")
+                return False
+            
+            logger.info(f"✅ Карточка найдена: '{card.title}'")
+            
+            # Если не в режиме просмотра, получаем стадии для миграции
+            if not list_only:
+                required_stages = ["Новые", "Выполняются"]
+                self.stage_mapping = await self.get_task_stages_by_names(target_group_id, required_stages)
+                
+                if len(self.stage_mapping) != len(required_stages):
+                    missing_stages = set(required_stages) - set(self.stage_mapping.keys())
+                    logger.error(f"❌ Не найдены обязательные стадии: {missing_stages}")
+                    return False
+            
+            # Обрабатываем карточку
+            self.stats['cards_total'] = 1
+            processed = await self.process_card(card, target_group_id, list_only)
+            
+            # Выводим статистику
+            self.print_migration_stats()
+            
+            return processed
+            
+        except Exception as e:
+            logger.error(f"Ошибка обработки карточки {card_id}: {e}")
+            return False
+
     async def process_board(self, board: KaitenBoard, target_group_id: int, list_only: bool = False, limit: int = None):
         """
         Обрабатывает карточки одной доски.
@@ -370,15 +430,26 @@ class CardMigrator:
             # Получаем карточки доски через правильный API эндпоинт (исключаем архивные)
             try:
                 cards_data = await self.kaiten_client._request('GET', f'/api/v1/cards?board_id={board.id}&archived=false')
-                # Преобразуем в SimpleKaitenCard объекты для совместимости
+                # Получаем полную информацию для каждой карточки включая описание
                 cards = []
                 if cards_data:
+                    logger.debug(f"   🔍 Получаем полную информацию для {len(cards_data)} карточек...")
                     for card_data in cards_data:
                         try:
-                            card = SimpleKaitenCard(**card_data)
-                            cards.append(card)
+                            card_id = card_data.get('id')
+                            if card_id:
+                                # Получаем полную карточку с описанием
+                                full_card = await self.kaiten_client.get_card_by_id(card_id)
+                                if full_card:
+                                    cards.append(full_card)
+                                else:
+                                    # Fallback к краткой информации если полная недоступна
+                                    card = SimpleKaitenCard(**card_data)
+                                    cards.append(card)
+                            else:
+                                logger.debug(f"   ⚠️ Карточка без ID: {card_data}")
                         except Exception as e:
-                            logger.debug(f"   ⚠️ Не удалось создать объект карточки {card_data.get('id', 'unknown')}: {e}")
+                            logger.debug(f"   ⚠️ Не удалось обработать карточку {card_data.get('id', 'unknown')}: {e}")
             except Exception as e:
                 logger.debug(f"   ❌ Не удалось получить карточки доски через board_id: {e}")
                 cards = []
@@ -432,10 +503,20 @@ class CardMigrator:
                 existing_task_id = self.card_mapping[card_id_str]
                 if list_only:
                     logger.info(f"   ⏭️  Карточка: ID {card.id}, '{card.title}' -> УЖЕ МИГРИРОВАНА (задача ID {existing_task_id})")
+                    return True  # Считаем как обработанную
                 else:
-                    logger.info(f"   ⏭️  Пропускаем карточку '{card.title}' (ID: {card.id}) - уже мигрирована как задача ID {existing_task_id}")
-                self.stats['cards_skipped'] += 1
-                return True  # Считаем как обработанную
+                    # Обновляем существующую карточку
+                    logger.info(f"   🔄 Обновляем карточку '{card.title}' (ID: {card.id}) -> задача ID {existing_task_id}")
+                    
+                    # Определяем целевую стадию для обновления
+                    target_stage = self.get_target_stage_for_card(card)
+                    if not target_stage:
+                        self.stats['cards_filtered_out'] += 1
+                        return False
+                    
+                    # Обновляем существующую задачу
+                    await self.update_existing_card(card, int(existing_task_id), target_group_id, target_stage)
+                    return True
             
             # Проверяем, нужно ли переносить карточку
             if not self.should_migrate_card(card):
@@ -512,6 +593,47 @@ class CardMigrator:
             logger.error(f"Ошибка миграции карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
 
+    async def update_existing_card(self, card: Union[KaitenCard, SimpleKaitenCard], task_id: int, target_group_id: int, target_stage: str):
+        """
+        Обновляет существующую задачу в Bitrix24 данными из карточки Kaiten.
+        
+        Args:
+            card: Карточка Kaiten
+            task_id: ID существующей задачи в Bitrix24
+            target_group_id: ID группы в Bitrix24
+            target_stage: Название целевой стадии
+        """
+        try:
+            # Трансформируем карточку в формат Bitrix24
+            task_data = self.card_transformer.transform(card, str(target_group_id))
+            
+            if not task_data:
+                logger.warning(f"⚠️ Не удалось трансформировать карточку '{card.title}' для обновления")
+                self.stats['cards_failed'] += 1
+                return
+            
+            # Добавляем стадию
+            stage_id = self.stage_mapping.get(target_stage)
+            if stage_id:
+                task_data['STAGE_ID'] = stage_id
+            
+            # Обновляем задачу в Bitrix24
+            success = await self.bitrix_client.update_task(
+                task_id=task_id,
+                **task_data
+            )
+            
+            if success:
+                logger.success(f"✅ Обновлена задача ID {task_id} из карточки '{card.title}' (стадия '{target_stage}')")
+                self.stats['cards_updated'] += 1
+            else:
+                logger.error(f"❌ Не удалось обновить задачу ID {task_id} для карточки '{card.title}'")
+                self.stats['cards_failed'] += 1
+                
+        except Exception as e:
+            logger.error(f"Ошибка обновления задачи ID {task_id} для карточки '{card.title}': {e}")
+            self.stats['cards_failed'] += 1
+
     def print_migration_stats(self):
         """Выводит статистику миграции"""
         logger.info("\n" + "="*50)
@@ -520,7 +642,7 @@ class CardMigrator:
         logger.info(f"Досок обработано: {self.stats['boards_processed']}")
         logger.info(f"Карточек всего: {self.stats['cards_total']}")
         logger.info(f"Карточек отфильтровано: {self.stats['cards_filtered_out']}")
-        logger.info(f"Карточек пропущено (уже мигрированы): {self.stats['cards_skipped']}")
-        logger.info(f"Карточек мигрировано: {self.stats['cards_migrated']}")
+        logger.info(f"Карточек создано: {self.stats['cards_migrated']}")
+        logger.info(f"Карточек обновлено: {self.stats['cards_updated']}")
         logger.info(f"Карточек с ошибками: {self.stats['cards_failed']}")
         logger.info("="*50) 

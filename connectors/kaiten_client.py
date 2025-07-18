@@ -132,13 +132,13 @@ class KaitenClient:
 
     async def get_card_by_id(self, card_id: int) -> Optional[SimpleKaitenCard]:
         """
-        Получает карточку по ID (упрощенная модель).
+        Получает карточку по ID (упрощенная модель) с полной информацией включая описание.
         """
         endpoint = f"/api/v1/cards/{card_id}"
-        logger.info(f"Запрос карточки {card_id}...")
+        logger.debug(f"Запрос полной карточки {card_id}...")
         data = await self._request("GET", endpoint)
         if data:
-            logger.success(f"Получена карточка {card_id}.")
+            logger.debug(f"Получена полная карточка {card_id}.")
             return SimpleKaitenCard(**data)
         return None
 

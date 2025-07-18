@@ -38,11 +38,14 @@ async def main():
 3. Миграция ограниченного количества карточек (первые 5 карточек первой доски):
    python scripts/card_migration.py --space-id 426722 --limit 5
 
-4. Просмотр первых 10 карточек:
-   python scripts/card_migration.py --space-id 426722 --list-only --limit 10
+4. Просмотр конкретной карточки:
+   python scripts/card_migration.py --space-id 426722 --card-id 50562607 --list-only
 
-5. Миграция с выводом только для конкретной карточки:
-   python scripts/card_migration.py --space-id 426722 --list-only | grep "50562607"
+5. Миграция конкретной карточки:
+   python scripts/card_migration.py --space-id 426722 --card-id 50562607
+
+6. Просмотр первых 10 карточек:
+   python scripts/card_migration.py --space-id 426722 --list-only --limit 10
 
 Примечание: Группа Bitrix24 определяется автоматически из файла mappings/space_mapping.json.
 Если пространство не найдено в маппинге, сначала выполните: python scripts/board_migration.py --space-id <ID>
@@ -60,6 +63,12 @@ async def main():
         '--group-id', 
         type=int, 
         help='ID группы (проекта) в Bitrix24 (опционально, автоматически определяется из space_mapping.json)'
+    )
+    
+    parser.add_argument(
+        '--card-id', 
+        type=int, 
+        help='ID конкретной карточки для обработки (если не указан, обрабатываются все карточки)'
     )
     
     parser.add_argument(
@@ -82,22 +91,34 @@ async def main():
     
     args = parser.parse_args()
     
-    # Устанавливаем уровень логирования
-    if args.verbose:
-        logger.setLevel("DEBUG")
+    # Валидация взаимоисключающих параметров
+    if args.card_id and args.limit:
+        logger.error("❌ Параметры --card-id и --limit взаимоисключающие")
+        return 1
+    
+    # Подробный вывод будет через logger.debug() без изменения уровня
     
     # Выводим информацию о запуске
-    mode_text = "ПРОСМОТР СПИСКА КАРТОЧЕК" if args.list_only else "МИГРАЦИЯ КАРТОЧЕК"
-    if args.limit:
-        mode_text += f" (ЛИМИТ: {args.limit})"
+    if args.card_id:
+        mode_text = f"{'ПРОСМОТР' if args.list_only else 'МИГРАЦИЯ'} КОНКРЕТНОЙ КАРТОЧКИ {args.card_id}"
+    else:
+        mode_text = "ПРОСМОТР СПИСКА КАРТОЧЕК" if args.list_only else "МИГРАЦИЯ КАРТОЧЕК"
+        if args.limit:
+            mode_text += f" (ЛИМИТ: {args.limit})"
+    
     logger.info("=" * 60)
     logger.info(f"🚀 ЗАПУСК: {mode_text}")
     logger.info("=" * 60)
     logger.info(f"Пространство Kaiten: {args.space_id}")
+    
+    if args.card_id:
+        logger.info(f"Карточка Kaiten: {args.card_id}")
+    
     if args.group_id:
         logger.info(f"Группа Bitrix24 (ручная): {args.group_id}")
     else:
         logger.info("Группа Bitrix24: будет определена автоматически")
+        
     if args.limit:
         logger.info(f"Лимит карточек: {args.limit} (только первая доска)")
     
@@ -138,7 +159,8 @@ async def main():
             space_id=args.space_id,
             target_group_id=target_group_id,
             list_only=args.list_only,
-            limit=args.limit
+            limit=args.limit,
+            card_id=args.card_id
         )
         
         if success:

@@ -131,6 +131,30 @@ class BitrixClient:
             return task_id
         return None
 
+    async def update_task(self, task_id: int, **kwargs) -> bool:
+        """
+        Обновляет существующую задачу.
+        
+        :param task_id: ID задачи для обновления
+        :param kwargs: Поля задачи для обновления (title, description, responsible_id, etc.)
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'tasks.task.update'
+        params = {
+            'taskId': task_id,
+            'fields': kwargs
+        }
+        
+        task_title = kwargs.get('TITLE', f'ID {task_id}')
+        logger.info(f"Обновление задачи '{task_title}' (ID: {task_id}) в Bitrix24...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            logger.success(f"Задача '{task_title}' (ID: {task_id}) успешно обновлена.")
+            return True
+        else:
+            logger.error(f"Не удалось обновить задачу '{task_title}' (ID: {task_id})")
+            return False
+
     async def get_workgroup_list(self) -> List[Dict[str, Any]]:
         """
         Получает список всех рабочих групп из Bitrix24 с поддержкой пагинации.
