@@ -623,3 +623,54 @@ class BitrixClient:
         except Exception as e:
             logger.warning(f"Ошибка очистки чек-листов задачи {task_id}: {e}")
             return False
+
+    # ========== МЕТОДЫ ДЛЯ РАБОТЫ С КОММЕНТАРИЯМИ ЗАДАЧ ==========
+    
+    async def add_task_comment(self, task_id: int, text: str, author_id: int, created_date: str = None) -> Optional[int]:
+        """
+        Добавляет комментарий к задаче.
+        
+        :param task_id: ID задачи
+        :param text: Текст комментария
+        :param author_id: ID автора комментария в Bitrix24
+        :param created_date: Дата создания комментария в формате ISO (опционально)
+        :return: ID созданного комментария или None
+        """
+        api_method = 'task.commentitem.add'
+        params = {
+            'taskId': task_id,
+            'fields': {
+                'POST_MESSAGE': text,
+                'AUTHOR_ID': author_id
+            }
+        }
+        
+        # Если указана дата создания, добавляем её
+        if created_date:
+            params['fields']['POST_DATE'] = created_date
+        
+        logger.debug(f"Добавление комментария к задаче {task_id} от пользователя {author_id}...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            comment_id = result
+            logger.debug(f"Комментарий добавлен с ID {comment_id}")
+            return comment_id
+        else:
+            logger.warning(f"Не удалось добавить комментарий к задаче {task_id}")
+            return None
+
+    async def get_task_comments(self, task_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает комментарии задачи.
+        
+        :param task_id: ID задачи
+        :return: Список комментариев задачи
+        """
+        api_method = 'task.commentitem.getlist'
+        params = {'taskId': task_id}
+        logger.debug(f"Запрос комментариев для задачи {task_id}...")
+        result = await self._request('GET', api_method, params)
+        if result:
+            logger.debug(f"Получено {len(result)} комментариев для задачи {task_id}")
+            return result
+        return []

@@ -1,5 +1,5 @@
 import httpx
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from config.settings import settings
 from models.kaiten_models import KaitenSpace, KaitenUser, KaitenBoard, KaitenCard, KaitenSpaceMember, KaitenColumn, KaitenLane
@@ -326,4 +326,30 @@ class KaitenClient:
                 
         except Exception as e:
             logger.debug(f"Ошибка при получении чек-листов карточки {card_id}: {e}")
+            return []
+
+    async def get_card_comments(self, card_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает комментарии к карточке.
+        
+        Args:
+            card_id: ID карточки в Kaiten
+            
+        Returns:
+            Список комментариев карточки
+        """
+        try:
+            endpoint = f"/api/v1/cards/{card_id}/comments"
+            logger.debug(f"Запрос комментариев для карточки {card_id}...")
+            data = await self._request("GET", endpoint)
+            
+            if data and isinstance(data, list):
+                logger.debug(f"Найдено {len(data)} комментариев для карточки {card_id}")
+                return data
+            else:
+                logger.debug(f"Комментарии для карточки {card_id} не найдены")
+                return []
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении комментариев карточки {card_id}: {e}")
             return []

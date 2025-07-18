@@ -81,7 +81,9 @@ class CardMigrator:
             'cards_failed': 0,
             'boards_processed': 0,
             'checklists_migrated': 0,  # Счетчик перенесенных чек-листов
-            'checklist_items_migrated': 0  # Счетчик перенесенных элементов чек-листов
+            'checklist_items_migrated': 0,  # Счетчик перенесенных элементов чек-листов
+            'comments_migrated': 0,  # Счетчик перенесенных комментариев
+            'comments_skipped': 0   # Счетчик пропущенных комментариев (от ботов)
         }
 
     async def load_user_mapping(self) -> bool:
@@ -589,6 +591,9 @@ class CardMigrator:
                 # Мигрируем чек-листы
                 await self.migrate_card_checklists(card.id, task_id, card.title)
                 
+                # Мигрируем комментарии
+                await self.migrate_card_comments(card.id, task_id, card.title)
+                
                 self.stats['cards_migrated'] += 1
             else:
                 logger.error(f"❌ Не удалось создать задачу для карточки '{card.title}'")
@@ -633,6 +638,9 @@ class CardMigrator:
                 
                 # Мигрируем чек-листы (при обновлении тоже синхронизируем)
                 await self.migrate_card_checklists(card.id, task_id, card.title, is_update=True)
+                
+                # Мигрируем комментарии (при обновлении тоже синхронизируем)
+                await self.migrate_card_comments(card.id, task_id, card.title, is_update=True)
                 
                 self.stats['cards_updated'] += 1
             else:
@@ -745,6 +753,105 @@ class CardMigrator:
             logger.error(f"Ошибка миграции чек-листов для карточки '{card_title}': {e}")
             return False
 
+    async def migrate_card_comments(self, card_id: int, task_id: int, card_title: str, is_update: bool = False) -> bool:
+        """
+        Мигрирует комментарии карточки Kaiten в комментарии задачи Bitrix24.
+        
+        Args:
+            card_id: ID карточки Kaiten
+            task_id: ID задачи Bitrix24
+            card_title: Название карточки (для логирования)
+            is_update: Если True, то это обновление (при обновлении не дублируем комментарии)
+            
+        Returns:
+            True в случае успеха
+        """
+        try:
+            # При обновлении проверяем существующие комментарии, чтобы избежать дублирования
+            existing_comments = []
+            if is_update:
+                logger.debug(f"🔍 Проверяем существующие комментарии задачи {task_id}...")
+                existing_comments_data = await self.bitrix_client.get_task_comments(task_id)
+                
+                # Собираем тексты существующих комментариев для сравнения
+                for comment in existing_comments_data:
+                    text = comment.get('POST_MESSAGE', '').strip()
+                    if text:
+                        existing_comments.append(text)
+                
+                if existing_comments:
+                    logger.debug(f"📋 Найдено {len(existing_comments)} комментариев в задаче")
+            
+            # Получаем комментарии карточки из Kaiten
+            comments = await self.kaiten_client.get_card_comments(card_id)
+            
+            if not comments:
+                logger.debug(f"У карточки '{card_title}' нет комментариев")
+                return True
+            
+            logger.info(f"💬 Переносим комментарии для карточки '{card_title}'")
+            
+            migrated_comments = 0
+            skipped_comments = 0
+            
+            for comment in comments:
+                try:
+                    # Получаем данные комментария
+                    comment_text = comment.get('text', '').strip()
+                    author_data = comment.get('author', {})
+                    created_date = comment.get('created_date')  # Дата в формате ISO
+                    
+                    if not comment_text:
+                        logger.debug(f"   ⏭️ Пропускаем пустой комментарий")
+                        continue
+                    
+                    # Проверяем, есть ли автор в маппинге пользователей
+                    author_id_kaiten = str(author_data.get('id', ''))
+                    author_name = author_data.get('full_name', 'Неизвестный пользователь')
+                    
+                    if not author_id_kaiten or author_id_kaiten not in self.user_mapping:
+                        logger.debug(f"   🤖 Пропускаем комментарий от служебного пользователя: {author_name}")
+                        skipped_comments += 1
+                        continue
+                    
+                    # Получаем ID автора в Bitrix24
+                    author_id_bitrix = int(self.user_mapping[author_id_kaiten])
+                    
+                    # Проверяем дублирование при обновлении
+                    if is_update and comment_text in existing_comments:
+                        logger.debug(f"   ⏭️ Комментарий уже существует, пропускаем")
+                        continue
+                    
+                    # Переносим комментарий
+                    logger.debug(f"   💬 Комментарий от {author_name}: {comment_text[:50]}...")
+                    
+                    comment_id = await self.bitrix_client.add_task_comment(
+                        task_id=task_id,
+                        text=comment_text,
+                        author_id=author_id_bitrix,
+                        created_date=created_date
+                    )
+                    
+                    if comment_id:
+                        migrated_comments += 1
+                    else:
+                        logger.warning(f"⚠️ Не удалось перенести комментарий от {author_name}")
+                    
+                except Exception as e:
+                    logger.warning(f"Ошибка переноса комментария: {e}")
+                    continue
+            
+            if migrated_comments > 0 or skipped_comments > 0:
+                logger.success(f"✅ Перенесено {migrated_comments} комментариев, пропущено {skipped_comments} (боты)")
+                self.stats['comments_migrated'] += migrated_comments
+                self.stats['comments_skipped'] += skipped_comments
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка миграции комментариев для карточки '{card_title}': {e}")
+            return False
+
     def print_migration_stats(self):
         """Выводит статистику миграции"""
         logger.info("\n" + "="*50)
@@ -759,4 +866,7 @@ class CardMigrator:
         if self.stats['checklists_migrated'] > 0 or self.stats['checklist_items_migrated'] > 0:
             logger.info(f"Чек-листов перенесено: {self.stats['checklists_migrated']}")
             logger.info(f"Элементов чек-листов: {self.stats['checklist_items_migrated']}")
+        if self.stats['comments_migrated'] > 0 or self.stats['comments_skipped'] > 0:
+            logger.info(f"Комментариев перенесено: {self.stats['comments_migrated']}")
+            logger.info(f"Комментариев пропущено (боты): {self.stats['comments_skipped']}")
         logger.info("="*50) 
