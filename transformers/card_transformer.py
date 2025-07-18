@@ -1,6 +1,7 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from models.kaiten_models import KaitenCard
+from models.simple_kaiten_models import SimpleKaitenCard
 from transformers.base_transformer import BaseTransformer
 from transformers.user_transformer import UserTransformer
 from utils.logger import get_logger
@@ -15,9 +16,9 @@ class CardTransformer(BaseTransformer):
     def __init__(self, user_transformer: UserTransformer):
         self.user_transformer = user_transformer
 
-    def transform(self, card: KaitenCard, bitrix_group_id: str) -> Optional[Dict[str, Any]]:
+    def transform(self, card: Union[KaitenCard, SimpleKaitenCard], bitrix_group_id: str) -> Optional[Dict[str, Any]]:
         """
-        Преобразует объект KaitenCard в словарь для API Bitrix24.
+        Преобразует объект KaitenCard или SimpleKaitenCard в словарь для API Bitrix24.
         
         :param card: Объект карточки Kaiten.
         :param bitrix_group_id: ID группы (проекта) в Bitrix24, к которой будет привязана задача.
@@ -33,7 +34,7 @@ class CardTransformer(BaseTransformer):
             
         transformed_data = {
             "TITLE": card.title,
-            "DESCRIPTION": card.description_filled or " ",
+            "DESCRIPTION": getattr(card, 'description', '') or " ",
             "RESPONSIBLE_ID": responsible_id,
             "GROUP_ID": bitrix_group_id,
             # Простое преобразование тегов

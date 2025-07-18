@@ -22,7 +22,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from migrators.space_migrator_v2 import SpaceMigratorV2
+from migrators.space_migrator import SpaceMigrator
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -83,7 +83,7 @@ async def main():
         logger.info("=" * 70)
         
         try:
-            migrator = SpaceMigratorV2()
+            migrator = SpaceMigrator()
             success = await migrator.list_available_spaces()
             return 0 if success else 1
         except Exception as e:
@@ -104,7 +104,7 @@ async def main():
     
     try:
         # Создаем мигратор и запускаем миграцию
-        migrator = SpaceMigratorV2()
+        migrator = SpaceMigrator()
         stats = await migrator.migrate_spaces(limit=args.limit, space_id=args.space_id)
         
         # Проверяем результаты

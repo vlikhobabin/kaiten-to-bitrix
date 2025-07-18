@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from config.settings import settings
 from models.kaiten_models import KaitenSpace, KaitenUser, KaitenBoard, KaitenCard, KaitenSpaceMember, KaitenColumn, KaitenLane
+from models.simple_kaiten_models import SimpleKaitenCard
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -128,6 +129,29 @@ class KaitenClient:
             logger.success(f"Получено {len(data)} карточек для доски {board_id}.")
             return [KaitenCard(**item) for item in data]
         return []
+
+    async def get_card_by_id(self, card_id: int) -> Optional[SimpleKaitenCard]:
+        """
+        Получает карточку по ID (упрощенная модель).
+        """
+        endpoint = f"/api/v1/cards/{card_id}"
+        logger.info(f"Запрос карточки {card_id}...")
+        data = await self._request("GET", endpoint)
+        if data:
+            logger.success(f"Получена карточка {card_id}.")
+            return SimpleKaitenCard(**data)
+        return None
+
+    async def get_cards_by_ids(self, card_ids: List[int]) -> List[SimpleKaitenCard]:
+        """
+        Получает карточки по списку ID (упрощенная модель).
+        """
+        cards = []
+        for card_id in card_ids:
+            card = await self.get_card_by_id(card_id)
+            if card:
+                cards.append(card)
+        return cards
 
     async def get_space_members(self, space_id: int) -> List[KaitenSpaceMember]:
         """
