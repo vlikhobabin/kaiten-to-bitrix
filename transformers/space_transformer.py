@@ -40,7 +40,7 @@ class SpaceTransformer:
         logger.info(f"Карта пространств Kaiten создана: {len(self._kaiten_spaces_map)} записей")
 
     def _build_hierarchical_name(self, kaiten_space: KaitenSpace) -> str:
-        """
+    """
         Строит полное название пространства с учетом иерархии.
         
         Args:

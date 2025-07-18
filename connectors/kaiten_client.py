@@ -2,7 +2,7 @@ import httpx
 from typing import List, Optional
 
 from config.settings import settings
-from models.kaiten_models import KaitenSpace, KaitenUser, KaitenBoard, KaitenCard, KaitenSpaceMember
+from models.kaiten_models import KaitenSpace, KaitenUser, KaitenBoard, KaitenCard, KaitenSpaceMember, KaitenColumn, KaitenLane
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -184,3 +184,73 @@ class KaitenClient:
         # Если ни один endpoint не сработал, возвращаем пустой список
         logger.warning(f"Не удалось получить участников пространства {space_id} ни через один из endpoints")
         return []
+
+    async def get_board_columns(self, board_id: int) -> List[KaitenColumn]:
+        """
+        Получает колонки указанной доски через получение полной информации о доске.
+        """
+        endpoint = f"/api/v1/boards/{board_id}"
+        logger.info(f"Запрос доски {board_id} для получения колонок...")
+        data = await self._request("GET", endpoint)
+        if data and 'columns' in data:
+            columns_data = data['columns']
+            logger.success(f"Получено {len(columns_data)} колонок для доски {board_id}.")
+            return [KaitenColumn(**item) for item in columns_data]
+        elif data:
+            logger.warning(f"Доска {board_id} найдена, но колонки отсутствуют в ответе")
+            return []
+        else:
+            logger.warning(f"Доска {board_id} не найдена")
+            return []
+
+    async def get_board_lanes(self, board_id: int) -> List[KaitenLane]:
+        """
+        Получает lanes (подколонки) указанной доски.
+        """
+        endpoint = f"/api/v1/lanes"
+        params = {"board_id": board_id}
+        logger.info(f"Запрос lanes для доски {board_id}...")
+        data = await self._request("GET", endpoint, params=params)
+        if data and isinstance(data, list):
+            logger.success(f"Получено {len(data)} lanes для доски {board_id}.")
+            return [KaitenLane(**item) for item in data]
+        elif data and 'lanes' in data:
+            lanes_data = data['lanes']
+            logger.success(f"Получено {len(lanes_data)} lanes для доски {board_id}.")
+            return [KaitenLane(**item) for item in lanes_data]
+        else:
+            logger.warning(f"Lanes для доски {board_id} не найдены")
+            return []
+
+    async def get_board_info(self, board_id: int) -> Optional[dict]:
+        """
+        Получает полную информацию о доске.
+        """
+        endpoint = f"/api/v1/boards/{board_id}"
+        logger.info(f"Запрос полной информации о доске {board_id}...")
+        data = await self._request("GET", endpoint)
+        if data:
+            logger.success(f"Получена информация о доске {board_id}.")
+            return data
+        else:
+            logger.warning(f"Информация о доске {board_id} не найдена")
+            return None
+
+    async def get_board_subcolumns(self, board_id: int) -> List[dict]:
+        """
+        Получает подколонки (subcolumns) указанной доски.
+        """
+        endpoint = f"/api/v1/subcolumns"
+        params = {"board_id": board_id}
+        logger.info(f"Запрос подколонок для доски {board_id}...")
+        data = await self._request("GET", endpoint, params=params)
+        if data and isinstance(data, list):
+            logger.success(f"Получено {len(data)} подколонок для доски {board_id}.")
+            return data
+        elif data and 'subcolumns' in data:
+            subcolumns_data = data['subcolumns']
+            logger.success(f"Получено {len(subcolumns_data)} подколонок для доски {board_id}.")
+            return subcolumns_data
+        else:
+            logger.warning(f"Подколонки для доски {board_id} не найдены")
+            return []

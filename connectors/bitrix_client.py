@@ -133,14 +133,55 @@ class BitrixClient:
 
     async def get_workgroup_list(self) -> List[Dict[str, Any]]:
         """
-        Получает список рабочих групп.
+        Получает список всех рабочих групп из Bitrix24 с поддержкой пагинации.
         """
-        api_method = 'sonet_group.get'
-        logger.info("Запрос списка рабочих групп из Bitrix24...")
-        result = await self._request('GET', api_method)
-        if result:
-            logger.success(f"Получено {len(result)} рабочих групп.")
-            return result
+        all_groups = []
+        page = 1
+        max_pages = 5  # До 250 групп (5 страниц по 50)
+        
+        try:
+            logger.info("📥 Запрос всех рабочих групп из Bitrix24 с пагинацией...")
+            
+            while page <= max_pages:
+                # Формула для start: start = (N-1) * 50, где N — номер страницы
+                start = (page - 1) * 50
+                
+                request_params = {
+                    'start': start
+                }
+                
+                logger.info(f"  Страница {page}: start={start}")
+                
+                # Метод sonet_group.get возвращает список словарей
+                groups_data = await self._request('GET', 'sonet_group.get', request_params)
+                
+                # Проверяем что получили корректные данные
+                if not groups_data or not isinstance(groups_data, list):
+                    logger.warning(f"  Некорректный ответ на странице {page}: {groups_data}")
+                    break
+                
+                # Если получили пустой список, значит больше групп нет
+                if not groups_data:
+                    logger.info(f"  Страница {page}: пустой результат, завершаем пагинацию")
+                    break
+                
+                logger.info(f"  Страница {page}: получено {len(groups_data)} групп")
+                
+                # Добавляем группы к общему списку
+                all_groups.extend(groups_data)
+                
+                # Если получили меньше 50 групп, это последняя страница
+                if len(groups_data) < 50:
+                    logger.info(f"  Получено {len(groups_data)} < 50, это последняя страница")
+                    break
+                
+                page += 1
+            
+            logger.success(f"✅ Получено {len(all_groups)} рабочих групп из {page-1} страниц")
+            return all_groups
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении рабочих групп из Bitrix24: {e}")
         return []
         
     async def get_task_list(self, group_id: int) -> List[Dict[str, Any]]:
@@ -270,7 +311,7 @@ class BitrixClient:
                 
                 logger.info(f"  Страница {page}: start={start}")
                 
-                # Метод user.get возвращает список словарей
+            # Метод user.get возвращает список словарей
                 users_data = await self._request('GET', 'user.get', request_params)
                 
                 # Проверяем что получили корректные данные
@@ -319,3 +360,85 @@ class BitrixClient:
         except Exception as e:
             logger.warning(f"Ошибка получения пользователя с ID {user_id}: {e}")
             return None
+
+    # ========== МЕТОДЫ ДЛЯ РАБОТЫ СО СТАДИЯМИ ЗАДАЧ ==========
+    
+    async def get_task_stages(self, entity_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список стадий канбана для группы.
+        
+        :param entity_id: ID группы (рабочей группы)
+        :return: Список стадий
+        """
+        api_method = 'task.stages.get'
+        params = {'entityId': entity_id}
+        logger.info(f"Запрос стадий канбана для группы {entity_id}...")
+        result = await self._request('GET', api_method, params)
+        if result:
+            logger.success(f"Получено {len(result)} стадий для группы {entity_id}.")
+            return result
+        return []
+
+    async def create_task_stage(self, entity_id: int, title: str, sort: int = 100, 
+                               color: str = "0066CC") -> Optional[Dict[str, Any]]:
+        """
+        Создает новую стадию канбана для группы.
+        
+        :param entity_id: ID группы (рабочей группы)
+        :param title: Название стадии
+        :param sort: Порядок сортировки (по умолчанию 100)
+        :param color: Цвет стадии в HEX формате (по умолчанию синий)
+        :return: Данные созданной стадии или None
+        """
+        api_method = 'task.stages.add'
+        params = {
+            'fields': {
+                'TITLE': title,
+                'SORT': sort,
+                'COLOR': color,
+                'ENTITY_ID': entity_id,
+                'ENTITY_TYPE': 'GROUP'  # Указываем что это стадии для группы
+            }
+        }
+        logger.info(f"Создание стадии '{title}' для группы {entity_id}...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            logger.success(f"Стадия '{title}' успешно создана для группы {entity_id}.")
+            return result
+        return None
+
+    async def update_task_stage(self, stage_id: int, fields: Dict[str, Any]) -> bool:
+        """
+        Обновляет существующую стадию канбана.
+        
+        :param stage_id: ID стадии
+        :param fields: Поля для обновления
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'task.stages.update'
+        params = {
+            'id': stage_id,
+            'fields': fields
+        }
+        logger.info(f"Обновление стадии {stage_id}...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            logger.success(f"Стадия {stage_id} успешно обновлена.")
+            return True
+        return False
+
+    async def delete_task_stage(self, stage_id: int) -> bool:
+        """
+        Удаляет стадию канбана.
+        
+        :param stage_id: ID стадии
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'task.stages.delete'
+        params = {'id': stage_id}
+        logger.info(f"Удаление стадии {stage_id}...")
+        result = await self._request('POST', api_method, params)
+        if result:
+            logger.success(f"Стадия {stage_id} успешно удалена.")
+            return True
+        return False
