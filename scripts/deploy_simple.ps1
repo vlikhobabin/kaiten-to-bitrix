@@ -9,7 +9,9 @@ function Read-EnvFile {
     if (Test-Path $FilePath) {
         Get-Content $FilePath | Where-Object { $_ -notmatch '^#' -and $_ -match '=' } | ForEach-Object {
             $key, $value = $_ -split '=', 2
-            $envVars[$key] = $value.Trim('"')
+            # Remove quotes and trim whitespace
+            $value = $value.Trim().Trim('"').Trim("'")
+            $envVars[$key] = $value
         }
     }
     return $envVars
