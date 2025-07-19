@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -15,6 +16,7 @@ from models.kaiten_models import KaitenCard, KaitenBoard, KaitenColumn
 from models.simple_kaiten_models import SimpleKaitenCard
 from transformers.card_transformer import CardTransformer
 from transformers.user_transformer import UserTransformer
+from config.settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -753,9 +755,76 @@ class CardMigrator:
             logger.error(f"Ошибка миграции чек-листов для карточки '{card_title}': {e}")
             return False
 
+    def update_comment_dates_via_ssh(self, comment_dates: Dict[str, str]) -> bool:
+        """
+        Обновляет даты комментариев через SSH вызов скрипта на VPS сервере.
+        
+        Args:
+            comment_dates: Словарь {comment_id: datetime_string}
+            
+        Returns:
+            True в случае успеха
+        """
+        if not comment_dates:
+            logger.debug("Нет комментариев для обновления дат")
+            return True
+        
+        # Проверяем наличие SSH настроек
+        if not settings.ssh_host or not settings.ssh_key_path:
+            logger.warning("⚠️ SSH настройки не настроены, пропускаем обновление дат комментариев")
+            logger.info("💡 Для настройки SSH добавьте SSH_HOST и SSH_KEY_PATH в .env файл")
+            return True
+        
+        try:
+            # Формируем JSON строку для передачи
+            json_data = json.dumps(comment_dates)
+            
+            # SSH команда для выполнения скрипта на сервере
+            ssh_command = [
+                "ssh", 
+                "-i", settings.ssh_key_path,
+                f"{settings.ssh_user}@{settings.ssh_host}",
+                f"python3 {settings.vps_script_path} '{json_data}'"
+            ]
+            
+            logger.debug(f"🔄 Обновление дат для {len(comment_dates)} комментариев через SSH...")
+            
+            # Выполняем команду
+            result = subprocess.run(
+                ssh_command,
+                capture_output=True,
+                text=True,
+                timeout=30  # Таймаут 30 секунд
+            )
+            
+            if result.returncode == 0:
+                logger.success(f"✅ Даты комментариев успешно обновлены через SSH")
+                if result.stdout:
+                    # Выводим последние строки вывода для подтверждения
+                    output_lines = result.stdout.strip().split('\n')
+                    for line in output_lines[-3:]:  # Последние 3 строки
+                        if line.strip():
+                            logger.debug(f"  SSH: {line}")
+                return True
+            else:
+                logger.error(f"❌ Ошибка SSH команды (код {result.returncode})")
+                if result.stderr:
+                    logger.error(f"SSH stderr: {result.stderr}")
+                if result.stdout:
+                    logger.error(f"SSH stdout: {result.stdout}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            logger.error("❌ Таймаут выполнения SSH команды")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Ошибка выполнения SSH команды: {e}")
+            return False
+
     async def migrate_card_comments(self, card_id: int, task_id: int, card_title: str, is_update: bool = False) -> bool:
         """
         Мигрирует комментарии карточки Kaiten в комментарии задачи Bitrix24.
+        С установкой правильных дат через SSH на VPS сервер.
         
         Args:
             card_id: ID карточки Kaiten
@@ -793,24 +862,32 @@ class CardMigrator:
             
             migrated_comments = 0
             skipped_comments = 0
+            comment_dates_to_update = {}  # {comment_id: original_date}
             
             for comment in comments:
                 try:
                     # Получаем данные комментария
                     comment_text = comment.get('text', '').strip()
                     author_data = comment.get('author', {})
-                    created_date = comment.get('created_date')  # Дата в формате ISO
+                    created_date = comment.get('created')  # Дата в формате ISO (исправлено поле!)
                     
                     if not comment_text:
                         logger.debug(f"   ⏭️ Пропускаем пустой комментарий")
                         continue
                     
                     # Проверяем, есть ли автор в маппинге пользователей
-                    author_id_kaiten = str(author_data.get('id', ''))
+                    author_id_raw = author_data.get('id')
                     author_name = author_data.get('full_name', 'Неизвестный пользователь')
                     
-                    if not author_id_kaiten or author_id_kaiten not in self.user_mapping:
-                        logger.debug(f"   🤖 Пропускаем комментарий от служебного пользователя: {author_name}")
+                    # Фильтруем ботов (отрицательные ID) и пользователей не в маппинге
+                    if author_id_raw is None or author_id_raw < 0:
+                        logger.debug(f"   🤖 Пропускаем комментарий от служебного бота: {author_name}")
+                        skipped_comments += 1
+                        continue
+                    
+                    author_id_kaiten = str(author_id_raw)
+                    if author_id_kaiten not in self.user_mapping:
+                        logger.debug(f"   🤖 Пропускаем комментарий от пользователя вне маппинга: {author_name} (ID: {author_id_kaiten})")
                         skipped_comments += 1
                         continue
                     
@@ -822,24 +899,44 @@ class CardMigrator:
                         logger.debug(f"   ⏭️ Комментарий уже существует, пропускаем")
                         continue
                     
-                    # Переносим комментарий
+                    # Переносим комментарий (без указания даты - API её игнорирует)
                     logger.debug(f"   💬 Комментарий от {author_name}: {comment_text[:50]}...")
                     
                     comment_id = await self.bitrix_client.add_task_comment(
                         task_id=task_id,
                         text=comment_text,
-                        author_id=author_id_bitrix,
-                        created_date=created_date
+                        author_id=author_id_bitrix
+                        # Намеренно НЕ передаем created_date, так как API его игнорирует
                     )
                     
                     if comment_id:
                         migrated_comments += 1
+                        
+                        # Кэшируем для последующего обновления даты через SSH
+                        if created_date:
+                            # Конвертируем ISO дату в MySQL формат для SSH скрипта
+                            try:
+                                if 'T' in created_date:
+                                    date_obj = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+                                    mysql_date = date_obj.strftime('%Y-%m-%d %H:%M:%S')
+                                    comment_dates_to_update[str(comment_id)] = mysql_date
+                                    logger.debug(f"   📅 Запланировано обновление даты комментария {comment_id} на {mysql_date}")
+                            except Exception as e:
+                                logger.warning(f"   ⚠️ Ошибка преобразования даты '{created_date}': {e}")
                     else:
                         logger.warning(f"⚠️ Не удалось перенести комментарий от {author_name}")
                     
                 except Exception as e:
                     logger.warning(f"Ошибка переноса комментария: {e}")
                     continue
+            
+            # Обновляем даты созданных комментариев через SSH
+            if comment_dates_to_update:
+                logger.info(f"🕒 Обновляем даты для {len(comment_dates_to_update)} комментариев через SSH...")
+                ssh_success = self.update_comment_dates_via_ssh(comment_dates_to_update)
+                
+                if not ssh_success:
+                    logger.warning(f"⚠️ Не удалось обновить даты комментариев через SSH, но комментарии созданы")
             
             if migrated_comments > 0 or skipped_comments > 0:
                 logger.success(f"✅ Перенесено {migrated_comments} комментариев, пропущено {skipped_comments} (боты)")
