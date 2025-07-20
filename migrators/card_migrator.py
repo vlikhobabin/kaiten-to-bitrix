@@ -594,7 +594,7 @@ class CardMigrator:
                 await self.migrate_card_checklists(card.id, task_id, card.title)
                 
                 # Мигрируем комментарии
-                await self.migrate_card_comments(card.id, task_id, card.title)
+                await self.migrate_card_comments(card.id, task_id, card.title, target_group_id)
                 
                 self.stats['cards_migrated'] += 1
             else:
@@ -642,7 +642,7 @@ class CardMigrator:
                 await self.migrate_card_checklists(card.id, task_id, card.title, is_update=True)
                 
                 # Мигрируем комментарии (при обновлении тоже синхронизируем)
-                await self.migrate_card_comments(card.id, task_id, card.title, is_update=True)
+                await self.migrate_card_comments(card.id, task_id, card.title, target_group_id, is_update=True)
                 
                 self.stats['cards_updated'] += 1
             else:
@@ -821,9 +821,9 @@ class CardMigrator:
             logger.error(f"❌ Ошибка выполнения SSH команды: {e}")
             return False
 
-    async def migrate_card_comments(self, card_id: int, task_id: int, card_title: str, is_update: bool = False) -> bool:
+    async def migrate_card_comments(self, card_id: int, task_id: int, card_title: str, target_group_id: int, is_update: bool = False) -> bool:
         """
-        Мигрирует комментарии карточки Kaiten в комментарии задачи Bitrix24.
+        Мигрирует комментарии карточки Kaiten в комментарии задачи Bitrix24 с файлами.
         С установкой правильных дат через SSH на VPS сервер.
         
         Args:
@@ -858,10 +858,25 @@ class CardMigrator:
                 logger.debug(f"У карточки '{card_title}' нет комментариев")
                 return True
             
-            logger.info(f"💬 Переносим комментарии для карточки '{card_title}'")
+            # Получаем файлы карточки для привязки к комментариям
+            card_files = await self.kaiten_client.get_card_files(card_id)
+            files_by_comment = {}  # {comment_id: [файлы]}
+            
+            if card_files:
+                logger.debug(f"📎 Найдено {len(card_files)} файлов для карточки {card_id}")
+                for file_info in card_files:
+                    comment_id = file_info.get('comment_id')
+                    if comment_id:
+                        if comment_id not in files_by_comment:
+                            files_by_comment[comment_id] = []
+                        files_by_comment[comment_id].append(file_info)
+            
+            logger.info(f"💬 Переносим комментарии для карточки '{card_title}'" + 
+                       (f" с {len(card_files)} файлами" if card_files else ""))
             
             migrated_comments = 0
             skipped_comments = 0
+            migrated_files = 0
             comment_dates_to_update = {}  # {comment_id: original_date}
             
             for comment in comments:
@@ -899,15 +914,63 @@ class CardMigrator:
                         logger.debug(f"   ⏭️ Комментарий уже существует, пропускаем")
                         continue
                     
-                    # Переносим комментарий (без указания даты - API её игнорирует)
-                    logger.debug(f"   💬 Комментарий от {author_name}: {comment_text[:50]}...")
+                    # Обрабатываем файлы, прикрепленные к комментарию
+                    kaiten_comment_id = comment.get('id')
+                    comment_files = files_by_comment.get(kaiten_comment_id, [])
                     
-                    comment_id = await self.bitrix_client.add_task_comment(
-                        task_id=task_id,
-                        text=comment_text,
-                        author_id=author_id_bitrix
-                        # Намеренно НЕ передаем created_date, так как API его игнорирует
-                    )
+                    uploaded_file_ids = []
+                    if comment_files:
+                        logger.debug(f"   📎 К комментарию прикреплено {len(comment_files)} файлов")
+                        
+                        for file_info in comment_files:
+                            file_name = file_info.get('name', 'unknown_file')
+                            file_url = file_info.get('url')
+                            
+                            if not file_url:
+                                logger.warning(f"   ⚠️ Файл '{file_name}' не имеет URL для скачивания")
+                                continue
+                            
+                            # Скачиваем файл из Kaiten
+                            logger.debug(f"   ⬇️ Скачиваем файл '{file_name}'...")
+                            file_content = await self.kaiten_client.download_file(file_url)
+                            
+                            if file_content:
+                                # Загружаем файл в Bitrix24 (в диск группы)
+                                logger.debug(f"   ⬆️ Загружаем файл '{file_name}' в Bitrix24 для группы {target_group_id}...")
+                                file_id = await self.bitrix_client.upload_file(file_content, file_name, target_group_id)
+                                
+                                if file_id:
+                                    uploaded_file_ids.append(file_id)
+                                    migrated_files += 1
+                                    logger.debug(f"   ✅ Файл '{file_name}' успешно загружен с ID {file_id}")
+                                else:
+                                    logger.warning(f"   ⚠️ Не удалось загрузить файл '{file_name}' в Bitrix24")
+                            else:
+                                logger.warning(f"   ⚠️ Не удалось скачать файл '{file_name}' из Kaiten")
+                    
+                    # Переносим комментарий с файлами (если есть)
+                    logger.debug(f"   💬 Комментарий от {author_name}: {comment_text[:50]}..." + 
+                               (f" с {len(uploaded_file_ids)} файлами" if uploaded_file_ids else ""))
+                    
+                    # Выбираем метод создания комментария в зависимости от наличия файлов
+                    if uploaded_file_ids:
+                        # Создаем комментарий с файлами с помощью нового метода
+                        comment_id = await self.bitrix_client.add_task_comment_with_file(
+                            task_id=task_id,
+                            text=comment_text,
+                            author_id=author_id_bitrix,
+                            file_id=uploaded_file_ids[0] if len(uploaded_file_ids) == 1 else None
+                            # Если файлов несколько, пока используем только первый
+                            # TODO: реализовать поддержку множественных файлов
+                        )
+                    else:
+                        # Создаем обычный комментарий без файлов
+                        comment_id = await self.bitrix_client.add_task_comment(
+                            task_id=task_id,
+                            text=comment_text,
+                            author_id=author_id_bitrix
+                            # Намеренно НЕ передаем created_date, так как API его игнорирует
+                        )
                     
                     if comment_id:
                         migrated_comments += 1
@@ -938,10 +1001,18 @@ class CardMigrator:
                 if not ssh_success:
                     logger.warning(f"⚠️ Не удалось обновить даты комментариев через SSH, но комментарии созданы")
             
-            if migrated_comments > 0 or skipped_comments > 0:
-                logger.success(f"✅ Перенесено {migrated_comments} комментариев, пропущено {skipped_comments} (боты)")
+            if migrated_comments > 0 or skipped_comments > 0 or migrated_files > 0:
+                result_message = f"✅ Перенесено {migrated_comments} комментариев, пропущено {skipped_comments} (боты)"
+                if migrated_files > 0:
+                    result_message += f", файлов: {migrated_files}"
+                logger.success(result_message)
                 self.stats['comments_migrated'] += migrated_comments
                 self.stats['comments_skipped'] += skipped_comments
+                
+                # Добавляем статистику по файлам если она еще не добавлена
+                if 'files_migrated' not in self.stats:
+                    self.stats['files_migrated'] = 0
+                self.stats['files_migrated'] += migrated_files
             
             return True
             
@@ -966,4 +1037,6 @@ class CardMigrator:
         if self.stats['comments_migrated'] > 0 or self.stats['comments_skipped'] > 0:
             logger.info(f"Комментариев перенесено: {self.stats['comments_migrated']}")
             logger.info(f"Комментариев пропущено (боты): {self.stats['comments_skipped']}")
+        if self.stats.get('files_migrated', 0) > 0:
+            logger.info(f"Файлов в комментариях перенесено: {self.stats['files_migrated']}")
         logger.info("="*50) 

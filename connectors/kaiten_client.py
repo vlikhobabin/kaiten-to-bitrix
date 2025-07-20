@@ -353,3 +353,50 @@ class KaitenClient:
         except Exception as e:
             logger.debug(f"Ошибка при получении комментариев карточки {card_id}: {e}")
             return []
+
+    async def get_card_files(self, card_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает файлы карточки.
+        
+        Args:
+            card_id: ID карточки в Kaiten
+            
+        Returns:
+            Список файлов карточки
+        """
+        try:
+            endpoint = f"/api/v1/cards/{card_id}/files"
+            logger.debug(f"Запрос файлов для карточки {card_id}...")
+            data = await self._request("GET", endpoint)
+            
+            if data and isinstance(data, list):
+                logger.debug(f"Найдено {len(data)} файлов для карточки {card_id}")
+                return data
+            else:
+                logger.debug(f"Файлы для карточки {card_id} не найдены")
+                return []
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении файлов карточки {card_id}: {e}")
+            return []
+
+    async def download_file(self, file_url: str) -> Optional[bytes]:
+        """
+        Скачивает файл по URL.
+        
+        Args:
+            file_url: URL файла для скачивания
+            
+        Returns:
+            Содержимое файла в байтах или None при ошибке
+        """
+        try:
+            async with httpx.AsyncClient(headers={'Authorization': f'Bearer {self.api_token}'}) as client:
+                logger.debug(f"Скачивание файла: {file_url}")
+                response = await client.get(file_url)
+                response.raise_for_status()
+                logger.debug(f"Файл успешно скачан, размер: {len(response.content)} байт")
+                return response.content
+        except Exception as e:
+            logger.error(f"Ошибка скачивания файла {file_url}: {e}")
+            return None

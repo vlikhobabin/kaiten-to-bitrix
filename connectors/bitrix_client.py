@@ -12,8 +12,15 @@ class BitrixClient:
     Асинхронный клиент для взаимодействия с Bitrix24 REST API.
     """
     def __init__(self):
-        # Webhook URL уже содержит и базовый путь, и токен
+        """Инициализация клиента Bitrix24"""
+        # Кэширование для производительности
+        self._group_storage_cache = {}  # {group_id: storage_id}
+        self._group_folder_cache = {}   # {storage_id: folder_id}
+        
+        # Загружаем настройки из env
         self.webhook_url = settings.bitrix_webhook_url
+        if not self.webhook_url:
+            raise ValueError("BITRIX_WEBHOOK_URL не настроен в переменных окружения")
 
     async def _request(self, method: str, api_method: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """
@@ -674,3 +681,292 @@ class BitrixClient:
             logger.debug(f"Получено {len(result)} комментариев для задачи {task_id}")
             return result
         return []
+
+    # ========== МЕТОДЫ ДЛЯ РАБОТЫ С ФАЙЛАМИ ==========
+    
+    async def get_group_storage(self, group_id: int) -> Optional[int]:
+        """
+        Получает ID хранилища диска для указанной группы/проекта.
+        
+        :param group_id: ID группы в Bitrix24
+        :return: ID хранилища группы или None
+        """
+        try:
+            # Проверяем кэш
+            if group_id in self._group_storage_cache:
+                logger.debug(f"Хранилище группы {group_id} найдено в кэше: {self._group_storage_cache[group_id]}")
+                return self._group_storage_cache[group_id]
+            
+            logger.debug(f"Поиск хранилища для группы {group_id}...")
+            
+            # Получаем список всех хранилищ
+            storages = await self._request('GET', 'disk.storage.getlist')
+            if not storages:
+                logger.error("❌ Не удалось получить список хранилищ")
+                return None
+            
+            # Ищем хранилище группы (ENTITY_TYPE = 'group')
+            group_storage = None
+            for storage in storages:
+                if (storage.get('ENTITY_TYPE') == 'group' and
+                    int(storage.get('ENTITY_ID', 0)) == group_id):
+                    group_storage = storage
+                    break
+            
+            if not group_storage:
+                logger.error(f"❌ Хранилище для группы {group_id} не найдено")
+                # Выводим доступные хранилища групп для отладки
+                group_storages = [s for s in storages if s.get('ENTITY_TYPE') == 'group']
+                if group_storages:
+                    logger.debug(f"Доступные хранилища групп: {[(s.get('ENTITY_ID'), s.get('NAME')) for s in group_storages[:5]]}")
+                return None
+            
+            storage_id = int(group_storage['ID'])
+            storage_name = group_storage.get('NAME', 'unknown')
+            
+            # Сохраняем в кэш
+            self._group_storage_cache[group_id] = storage_id
+            
+            logger.success(f"✅ Найдено хранилище группы {group_id}: '{storage_name}' (ID: {storage_id})")
+            return storage_id
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка при поиске хранилища группы {group_id}: {e}")
+            return None
+
+    async def get_or_create_kaiten_folder(self, storage_id: int) -> Optional[int]:
+        """
+        Находит или создает служебную папку "Перенос из Kaiten" на указанном диске.
+        
+        :param storage_id: ID хранилища диска
+        :return: ID папки "Перенос из Kaiten" или None
+        """
+        try:
+            # Проверяем кэш
+            if storage_id in self._group_folder_cache:
+                logger.debug(f"Папка 'Перенос из Kaiten' найдена в кэше для хранилища {storage_id}: {self._group_folder_cache[storage_id]}")
+                return self._group_folder_cache[storage_id]
+            
+            folder_name = "Перенос из Kaiten"
+            
+            # Получаем информацию о хранилище для получения ROOT_OBJECT_ID
+            logger.debug(f"Поиск папки '{folder_name}' в хранилище {storage_id}...")
+            storage_info = await self._request('GET', 'disk.storage.get', {'id': storage_id})
+            
+            if not storage_info or 'ROOT_OBJECT_ID' not in storage_info:
+                logger.warning(f"⚠️ Не удалось получить информацию о хранилище {storage_id}")
+                return None
+            
+            root_object_id = storage_info['ROOT_OBJECT_ID']
+            logger.debug(f"ROOT_OBJECT_ID хранилища {storage_id}: {root_object_id}")
+            
+            # Получаем содержимое корневой папки
+            storage_children = await self._request('GET', 'disk.folder.getchildren', {'id': root_object_id})
+            
+            # Ищем существующую папку
+            if storage_children:
+                for item in storage_children:
+                    if (item.get('TYPE') == 'folder' and 
+                        item.get('NAME') == folder_name):
+                        folder_id = item.get('ID')
+                        logger.debug(f"✅ Найдена существующая папка '{folder_name}' с ID: {folder_id}")
+                        
+                        # Сохраняем в кэш
+                        self._group_folder_cache[storage_id] = folder_id
+                        return folder_id
+            
+            # Папка не найдена, создаем новую
+            logger.info(f"📁 Создаем служебную папку '{folder_name}' в хранилище {storage_id}...")
+            create_params = {
+                'id': root_object_id,  # Используем ROOT_OBJECT_ID
+                'data': {
+                    'NAME': folder_name
+                }
+            }
+            
+            result = await self._request('POST', 'disk.folder.addsubfolder', create_params)
+            
+            if result and 'ID' in result:
+                folder_id = result['ID']
+                
+                # Сохраняем в кэш
+                self._group_folder_cache[storage_id] = folder_id
+                
+                logger.success(f"✅ Создана папка '{folder_name}' с ID: {folder_id}")
+                return folder_id
+            else:
+                logger.error(f"❌ Не удалось создать папку '{folder_name}': {result}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при работе с папкой '{folder_name}': {e}")
+            return None
+
+    async def upload_file(self, file_content: bytes, filename: str, group_id: int) -> Optional[str]:
+        """
+        Загружает файл в Bitrix24 через disk.folder.uploadfile в служебную папку группы.
+        
+        :param file_content: Содержимое файла в байтах
+        :param filename: Имя файла
+        :param group_id: ID группы в Bitrix24
+        :return: ID загруженного файла с префиксом 'n' или None
+        """
+        try:
+            import base64
+            import time
+            from pathlib import Path
+            
+            # Кодируем файл в base64 для API Bitrix24
+            file_base64 = base64.b64encode(file_content).decode('utf-8')
+            
+            logger.debug(f"Загружаем файл '{filename}' размером {len(file_content)} байт для группы {group_id}...")
+            
+            # Получаем хранилище группы
+            storage_id = await self.get_group_storage(group_id)
+            if not storage_id:
+                logger.error(f"❌ Не удалось найти хранилище для группы {group_id}")
+                return None
+            
+            # Получаем или создаем служебную папку "Перенос из Kaiten"
+            kaiten_folder_id = await self.get_or_create_kaiten_folder(storage_id)
+            if not kaiten_folder_id:
+                logger.error("❌ Не удалось получить/создать папку 'Перенос из Kaiten'")
+                return None
+            
+            # Пробуем загрузить файл с исходным именем
+            original_filename = filename
+            
+            for attempt in range(3):  # Максимум 3 попытки
+                # Генерируем уникальное имя при необходимости
+                if attempt > 0:
+                    # Добавляем временную метку к имени файла
+                    file_path = Path(original_filename)
+                    timestamp = int(time.time())
+                    unique_filename = f"{file_path.stem}_{timestamp}{file_path.suffix}"
+                else:
+                    unique_filename = original_filename
+                
+                # Загружаем файл в служебную папку группы
+                upload_params = {
+                    'id': kaiten_folder_id,  # Используем служебную папку
+                    'data': {
+                        'NAME': unique_filename
+                    },
+                    'fileContent': file_base64
+                }
+                
+                logger.debug(f"Попытка {attempt + 1}: загружаем файл '{unique_filename}' в папку 'Перенос из Kaiten' группы {group_id} (ID: {kaiten_folder_id})")
+                result = await self._request('POST', 'disk.folder.uploadfile', upload_params)
+                
+                if result and 'ID' in result:
+                    file_id = result['ID']
+                    # Возвращаем ID с префиксом 'n' как требует API для комментариев
+                    file_id_with_prefix = f"n{file_id}"
+                    logger.success(f"✅ Файл '{unique_filename}' успешно загружен в группу {group_id} с ID: {file_id} (для комментариев: {file_id_with_prefix})")
+                    return file_id_with_prefix
+                else:
+                    if attempt < 2:  # Не последняя попытка
+                        logger.debug(f"   ⚠️ Не удалось загрузить с именем '{unique_filename}', пробуем с уникальным именем...")
+                        continue
+                    else:
+                        logger.error(f"❌ Неожиданный ответ при загрузке файла после {attempt + 1} попыток: {result}")
+                        return None
+            
+            return None
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки файла '{filename}' в группу {group_id}: {e}")
+            return None
+
+    async def add_task_comment_with_file(self, task_id: int, text: str, author_id: int, 
+                                       file_id: str = None, created_date: str = None) -> Optional[int]:
+        """
+        Добавляет комментарий к задаче с прикрепленным файлом.
+        
+        :param task_id: ID задачи
+        :param text: Текст комментария
+        :param author_id: ID автора комментария в Bitrix24
+        :param file_id: ID файла в Bitrix24 Drive с префиксом 'n' (опционально)
+        :param created_date: Дата создания комментария в формате ISO (опционально)
+        :return: ID созданного комментария или None
+        """
+        api_method = 'task.commentitem.add'
+        params = {
+            'taskId': task_id,
+            'fields': {
+                'POST_MESSAGE': text,
+                'AUTHOR_ID': author_id
+            }
+        }
+        
+        # Добавляем файл, если он указан
+        if file_id:
+            # file_id уже содержит префикс 'n', добавляем его в массив
+            params['fields']['UF_FORUM_MESSAGE_DOC'] = [file_id]
+            logger.debug(f"Прикрепляем файл {file_id} к комментарию задачи {task_id}")
+        
+        # Дата создания комментария (API может игнорировать)
+        if created_date:
+            params['fields']['CREATED_DATE'] = created_date
+        
+        logger.debug(f"Создание комментария{'с файлом' if file_id else ''} для задачи {task_id}...")
+        result = await self._request('POST', api_method, params)
+        
+        if result:
+            # API может вернуть как число, так и объект
+            if isinstance(result, int):
+                comment_id = result
+            elif isinstance(result, dict) and 'result' in result:
+                comment_id = result['result']
+            else:
+                comment_id = result
+            
+            if comment_id:
+                logger.debug(f"✅ Комментарий создан с ID: {comment_id}")
+                return int(comment_id)
+            else:
+                logger.warning(f"⚠️ Неожиданный ответ при создании комментария: {result}")
+                return None
+        else:
+            logger.error(f"❌ Не удалось создать комментарий для задачи {task_id}")
+            return None
+
+    async def download_file(self, file_id: str) -> Optional[bytes]:
+        """
+        Скачивает файл из Bitrix24 по его ID.
+        
+        Args:
+            file_id: ID файла в Bitrix24 (может содержать префикс 'n')
+            
+        Returns:
+            Содержимое файла в байтах или None при ошибке
+        """
+        try:
+            # Убираем префикс 'n' если есть
+            clean_file_id = file_id.replace('n', '') if file_id.startswith('n') else file_id
+            
+            # Получаем информацию о файле для получения download_url
+            file_info = await self._request('GET', 'disk.file.get', {'id': clean_file_id})
+            
+            if not file_info or 'DOWNLOAD_URL' not in file_info:
+                logger.error(f"❌ Не удалось получить download_url для файла {file_id}")
+                return None
+            
+            download_url = file_info['DOWNLOAD_URL']
+            file_name = file_info.get('NAME', 'unknown')
+            
+            logger.debug(f"Скачивание файла '{file_name}' по URL: {download_url}")
+            
+            # Скачиваем файл
+            async with httpx.AsyncClient() as client:
+                response = await client.get(download_url)
+                response.raise_for_status()
+                
+                file_data = response.content
+                logger.debug(f"Скачано {len(file_data)} байт")
+                
+                return file_data
+                
+        except Exception as e:
+            logger.error(f"Ошибка скачивания файла {file_id}: {e}")
+            return None
