@@ -53,8 +53,8 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
-# Migration temporary files
-mappings/temp_*.json
+# Migration files with sensitive data
+mappings/*.json
 temp_*.json
 
 # Test outputs
