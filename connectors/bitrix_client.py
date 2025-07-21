@@ -913,7 +913,59 @@ class BitrixClient:
             logger.error(f"❌ Ошибка при работе с папкой '{folder_name}': {e}")
             return None
 
-    async def upload_file(self, file_content: bytes, filename: str, group_id: int) -> Optional[str]:
+    async def get_or_create_task_folder(self, storage_id: int, task_id: int) -> Optional[int]:
+        """
+        Находит или создает папку задачи внутри "Перенос из Kaiten".
+        
+        :param storage_id: ID хранилища диска
+        :param task_id: ID задачи Bitrix24
+        :return: ID папки задачи или None
+        """
+        try:
+            # Сначала получаем основную папку "Перенос из Kaiten"
+            kaiten_folder_id = await self.get_or_create_kaiten_folder(storage_id)
+            if not kaiten_folder_id:
+                logger.error("❌ Не удалось получить папку 'Перенос из Kaiten'")
+                return None
+            
+            task_folder_name = str(task_id)
+            
+            # Получаем содержимое папки "Перенос из Kaiten"
+            kaiten_folder_children = await self._request('GET', 'disk.folder.getchildren', {'id': kaiten_folder_id})
+            
+            # Ищем существующую папку задачи
+            if kaiten_folder_children:
+                for item in kaiten_folder_children:
+                    if (item.get('TYPE') == 'folder' and 
+                        item.get('NAME') == task_folder_name):
+                        task_folder_id = item.get('ID')
+                        logger.debug(f"✅ Найдена папка задачи {task_id} с ID: {task_folder_id}")
+                        return task_folder_id
+            
+            # Папка задачи не найдена, создаем новую
+            logger.debug(f"📁 Создаем папку для задачи {task_id} в 'Перенос из Kaiten'...")
+            create_params = {
+                'id': kaiten_folder_id,
+                'data': {
+                    'NAME': task_folder_name
+                }
+            }
+            
+            result = await self._request('POST', 'disk.folder.addsubfolder', create_params)
+            
+            if result and 'ID' in result:
+                task_folder_id = result['ID']
+                logger.success(f"✅ Создана папка задачи {task_id} с ID: {task_folder_id}")
+                return task_folder_id
+            else:
+                logger.error(f"❌ Не удалось создать папку задачи {task_id}: {result}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при работе с папкой задачи {task_id}: {e}")
+            return None
+
+    async def upload_file(self, file_content: bytes, filename: str, group_id: int, task_id: int = None) -> Optional[str]:
         """
         Загружает файл в Bitrix24 через disk.folder.uploadfile в служебную папку группы.
         Если файл уже существует, возвращает ID существующего файла.
@@ -921,6 +973,7 @@ class BitrixClient:
         :param file_content: Содержимое файла в байтах
         :param filename: Имя файла
         :param group_id: ID группы в Bitrix24
+        :param task_id: ID задачи Bitrix24 (опционально, для создания подпапки)
         :return: ID файла с префиксом 'n' или None
         """
         try:
@@ -932,14 +985,24 @@ class BitrixClient:
                 logger.error(f"❌ Не удалось найти хранилище для группы {group_id}")
                 return None
             
-            # Получаем или создаем служебную папку "Перенос из Kaiten"
-            kaiten_folder_id = await self.get_or_create_kaiten_folder(storage_id)
-            if not kaiten_folder_id:
-                logger.error("❌ Не удалось получить/создать папку 'Перенос из Kaiten'")
-                return None
+            # Определяем целевую папку в зависимости от наличия task_id
+            if task_id:
+                # Создаем папку задачи в "Перенос из Kaiten\{task_id}\"
+                target_folder_id = await self.get_or_create_task_folder(storage_id, task_id)
+                if not target_folder_id:
+                    logger.error(f"❌ Не удалось получить/создать папку задачи {task_id}")
+                    return None
+                logger.debug(f"Используем папку задачи {task_id} (ID: {target_folder_id})")
+            else:
+                # Используем общую папку "Перенос из Kaiten"
+                target_folder_id = await self.get_or_create_kaiten_folder(storage_id)
+                if not target_folder_id:
+                    logger.error("❌ Не удалось получить/создать папку 'Перенос из Kaiten'")
+                    return None
+                logger.debug(f"Используем общую папку 'Перенос из Kaiten' (ID: {target_folder_id})")
             
             # Сначала проверяем, существует ли уже такой файл
-            existing_file_id = await self.find_file_in_folder(kaiten_folder_id, filename)
+            existing_file_id = await self.find_file_in_folder(target_folder_id, filename)
             if existing_file_id:
                 logger.success(f"✅ Файл '{filename}' уже существует в Bitrix24 с ID: {existing_file_id.replace('n', '')} (используем существующий)")
                 return existing_file_id
@@ -965,16 +1028,17 @@ class BitrixClient:
                 else:
                     unique_filename = original_filename
                 
-                # Загружаем файл в служебную папку группы
+                # Загружаем файл в целевую папку
                 upload_params = {
-                    'id': kaiten_folder_id,  # Используем служебную папку
+                    'id': target_folder_id,  # Используем целевую папку (общую или задачи)
                     'data': {
                         'NAME': unique_filename
                     },
                     'fileContent': file_base64
                 }
                 
-                logger.debug(f"Попытка {attempt + 1}: загружаем файл '{unique_filename}' в папку 'Перенос из Kaiten' группы {group_id} (ID: {kaiten_folder_id})")
+                folder_path = f"Перенос из Kaiten\\{task_id}" if task_id else "Перенос из Kaiten"
+                logger.debug(f"Попытка {attempt + 1}: загружаем файл '{unique_filename}' в папку '{folder_path}' группы {group_id} (ID: {target_folder_id})")
                 result = await self._request('POST', 'disk.folder.uploadfile', upload_params)
                 
                 if result and 'ID' in result:

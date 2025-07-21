@@ -562,17 +562,10 @@ class CardMigrator:
             target_stage: Название целевой стадии
         """
         try:
-            # Обрабатываем файлы в описании и обновляем описание
+            # Получаем исходное описание
             original_description = getattr(card, 'description', '') or ""
-            updated_description, migrated_files = await self.migrate_description_files(
-                card.id, target_group_id, original_description
-            )
             
-            # Временно обновляем описание карточки для трансформации
-            if hasattr(card, 'description'):
-                card.description = updated_description
-            
-            # Трансформируем карточку в формат Bitrix24
+            # Трансформируем карточку в формат Bitrix24 с исходным описанием
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
             if not task_data:
@@ -585,7 +578,7 @@ class CardMigrator:
             if stage_id:
                 task_data['STAGE_ID'] = stage_id
             
-            # Создаем задачу в Bitrix24
+            # Создаем задачу в Bitrix24 с исходным описанием
             task_id = await self.bitrix_client.create_task(
                 title=task_data['TITLE'],
                 description=task_data.get('DESCRIPTION', ''),
@@ -597,12 +590,24 @@ class CardMigrator:
             
             if task_id:
                 logger.success(f"✅ Карточка '{card.title}' -> Задача ID {task_id} (стадия '{target_stage}')")
-                if migrated_files > 0:
-                    logger.info(f"   📎 Перенесено {migrated_files} файлов из описания")
                 
                 # Добавляем в маппинг и сохраняем
                 self.card_mapping[str(card.id)] = str(task_id)
                 await self.save_card_mapping()
+                
+                # Обрабатываем файлы в описании с новым task_id и обновляем описание
+                updated_description, migrated_files = await self.migrate_description_files(
+                    card.id, target_group_id, original_description, task_id
+                )
+                
+                # Если описание изменилось (файлы были перенесены), обновляем задачу
+                if updated_description != original_description:
+                    update_success = await self.bitrix_client.update_task(
+                        task_id=task_id,
+                        DESCRIPTION=updated_description
+                    )
+                    if update_success and migrated_files > 0:
+                        logger.info(f"   📎 Перенесено {migrated_files} файлов из описания в папку задачи {task_id}")
                 
                 # Мигрируем чек-листы
                 await self.migrate_card_checklists(card.id, task_id, card.title)
@@ -618,10 +623,6 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка миграции карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
-        finally:
-            # Восстанавливаем исходное описание карточки
-            if hasattr(card, 'description'):
-                card.description = original_description
 
     async def update_existing_card(self, card: Union[KaitenCard, SimpleKaitenCard], task_id: int, target_group_id: int, target_stage: str):
         """
@@ -637,7 +638,7 @@ class CardMigrator:
             # Обрабатываем файлы в описании и обновляем описание
             original_description = getattr(card, 'description', '') or ""
             updated_description, migrated_files = await self.migrate_description_files(
-                card.id, target_group_id, original_description
+                card.id, target_group_id, original_description, task_id
             )
             
             # Временно обновляем описание карточки для трансформации
@@ -666,7 +667,7 @@ class CardMigrator:
             if success:
                 logger.success(f"✅ Обновлена задача ID {task_id} из карточки '{card.title}' (стадия '{target_stage}')")
                 if migrated_files > 0:
-                    logger.info(f"   📎 Перенесено {migrated_files} файлов из описания")
+                    logger.info(f"   📎 Перенесено {migrated_files} файлов из описания в папку задачи {task_id}")
                 
                 # Мигрируем чек-листы (при обновлении тоже синхронизируем)
                 await self.migrate_card_checklists(card.id, task_id, card.title, is_update=True)
@@ -969,9 +970,9 @@ class CardMigrator:
                             file_content = await self.kaiten_client.download_file(file_url)
                             
                             if file_content:
-                                # Загружаем файл в Bitrix24 (в диск группы)
-                                logger.debug(f"   ⬆️ Загружаем файл '{file_name}' в Bitrix24 для группы {target_group_id}...")
-                                file_id = await self.bitrix_client.upload_file(file_content, file_name, target_group_id)
+                                # Загружаем файл в Bitrix24 (в папку задачи)
+                                logger.debug(f"   ⬆️ Загружаем файл '{file_name}' в Bitrix24 для задачи {task_id}...")
+                                file_id = await self.bitrix_client.upload_file(file_content, file_name, target_group_id, task_id)
                                 
                                 if file_id:
                                     uploaded_file_ids.append(file_id)
@@ -1081,7 +1082,7 @@ class CardMigrator:
         return file_links
 
     async def migrate_description_files(self, card_id: int, target_group_id: int, 
-                                      description: str) -> Tuple[str, int]:
+                                      description: str, task_id: int = None) -> Tuple[str, int]:
         """
         Переносит файлы из описания карточки в Bitrix24 и обновляет ссылки.
         
@@ -1089,6 +1090,7 @@ class CardMigrator:
             card_id: ID карточки Kaiten
             target_group_id: ID группы в Bitrix24
             description: Исходное описание карточки
+            task_id: ID задачи Bitrix24 (опционально, для создания подпапки)
             
         Returns:
             Кортеж (обновленное_описание, количество_перенесенных_файлов)
@@ -1138,8 +1140,12 @@ class CardMigrator:
                     continue
                 
                 # Проверяем/загружаем файл в Bitrix24
-                logger.debug(f"   📤 Обрабатываем файл '{filename}'...")
-                file_id = await self.bitrix_client.upload_file(file_content, filename, target_group_id)
+                if task_id:
+                    logger.debug(f"   📤 Обрабатываем файл '{filename}' для задачи {task_id}...")
+                    file_id = await self.bitrix_client.upload_file(file_content, filename, target_group_id, task_id)
+                else:
+                    logger.debug(f"   📤 Обрабатываем файл '{filename}' в общую папку...")
+                    file_id = await self.bitrix_client.upload_file(file_content, filename, target_group_id)
                 
                 if file_id:
                     # Формируем новую ссылку на файл в Bitrix24
