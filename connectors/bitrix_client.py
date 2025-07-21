@@ -21,6 +21,43 @@ class BitrixClient:
         self.webhook_url = settings.bitrix_webhook_url
         if not self.webhook_url:
             raise ValueError("BITRIX_WEBHOOK_URL не настроен в переменных окружения")
+            
+        # Извлекаем базовый URL для формирования ссылок на файлы
+        self.base_url = self._extract_base_url(self.webhook_url)
+
+    def _extract_base_url(self, webhook_url: str) -> str:
+        """
+        Извлекает базовый URL Bitrix24 из webhook URL.
+        
+        Args:
+            webhook_url: URL вебхука (например: https://domain/rest/1/webhook_code/)
+            
+        Returns:
+            Базовый URL (например: https://domain)
+        """
+        import re
+        # Паттерн для извлечения базового URL из webhook
+        # Формат webhook: https://domain/rest/1/webhook_code/
+        match = re.match(r'(https?://[^/]+)', webhook_url)
+        if match:
+            return match.group(1)
+        else:
+            # Fallback на случай нестандартного формата
+            return webhook_url.split('/rest/')[0] if '/rest/' in webhook_url else webhook_url.rstrip('/')
+
+    def get_file_url(self, file_id: str) -> str:
+        """
+        Формирует URL для просмотра файла в Bitrix24.
+        
+        Args:
+            file_id: ID файла (может содержать префикс 'n')
+            
+        Returns:
+            URL для просмотра файла
+        """
+        # Убираем префикс 'n' если есть
+        clean_file_id = file_id.replace('n', '') if file_id.startswith('n') else file_id
+        return f"{self.base_url}/bitrix/tools/disk/focus.php?objectId={clean_file_id}&cmd=show&action=showObjectInGrid&ncc=1"
 
     async def _request(self, method: str, api_method: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """
@@ -734,6 +771,80 @@ class BitrixClient:
             logger.error(f"❌ Ошибка при поиске хранилища группы {group_id}: {e}")
             return None
 
+    async def find_file_in_folder(self, folder_id: int, filename: str) -> Optional[str]:
+        """
+        Ищет файл по имени в указанной папке.
+        
+        :param folder_id: ID папки для поиска
+        :param filename: Имя файла для поиска
+        :return: ID найденного файла с префиксом 'n' или None
+        """
+        try:
+            logger.debug(f"Поиск файла '{filename}' в папке {folder_id}...")
+            
+            # Получаем содержимое папки
+            folder_children = await self._request('GET', 'disk.folder.getchildren', {'id': folder_id})
+            
+            if not folder_children:
+                logger.debug(f"Папка {folder_id} пуста или недоступна")
+                return None
+            
+            # Ищем файл по имени (точное совпадение или с timestamp)
+            for item in folder_children:
+                if not isinstance(item, dict):
+                    continue
+                
+                item_name = item.get('NAME', '')
+                item_type = item.get('TYPE', '')
+                item_id = item.get('ID', '')
+                
+                # Проверяем только файлы (не папки)
+                if item_type == 'file' and item_id:
+                    # Точное совпадение имени
+                    if item_name == filename:
+                        file_id_with_prefix = f"n{item_id}"
+                        logger.debug(f"✅ Найден файл '{filename}' с ID {item_id} (для комментариев: {file_id_with_prefix})")
+                        return file_id_with_prefix
+                    
+                    # Проверяем нормализованное имя (Bitrix24 может изменять символы)
+                    import re
+                    # Нормализуем исходное имя как это делает Bitrix24
+                    # Экранированное подчеркивание \_ преобразуется в __
+                    normalized_filename = filename.replace('\\_', '__')
+                    if item_name == normalized_filename:
+                        file_id_with_prefix = f"n{item_id}"
+                        logger.debug(f"✅ Найден нормализованный файл '{item_name}' для '{filename}' с ID {item_id}")
+                        return file_id_with_prefix
+                    
+                    # Проверяем файлы с timestamp (для случаев когда файл был переименован)
+                    # Формат: original_name_timestamp.ext или modified_name_timestamp.ext
+                    if filename.count('.') >= 1:  # Есть расширение
+                        base_name, ext = filename.rsplit('.', 1)
+                        
+                        # Нормализуем имя файла (убираем проблемные символы для поиска)
+                        normalized_base = re.sub(r'[\\/_]+', '_', base_name)
+                        
+                        # Ищем паттерн: normalized_base_[timestamp].ext
+                        pattern1 = f"^{re.escape(normalized_base)}_\\d+\\.{re.escape(ext)}$"
+                        if re.match(pattern1, item_name):
+                            file_id_with_prefix = f"n{item_id}"
+                            logger.debug(f"✅ Найден файл с timestamp '{item_name}' для '{filename}' с ID {item_id}")
+                            return file_id_with_prefix
+                        
+                        # Дополнительно проверяем оригинальное имя
+                        pattern2 = f"^{re.escape(base_name)}_\\d+\\.{re.escape(ext)}$"
+                        if re.match(pattern2, item_name):
+                            file_id_with_prefix = f"n{item_id}"
+                            logger.debug(f"✅ Найден файл с timestamp '{item_name}' для '{filename}' с ID {item_id}")
+                            return file_id_with_prefix
+            
+            logger.debug(f"Файл '{filename}' не найден в папке {folder_id}")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Ошибка поиска файла '{filename}' в папке {folder_id}: {e}")
+            return None
+
     async def get_or_create_kaiten_folder(self, storage_id: int) -> Optional[int]:
         """
         Находит или создает служебную папку "Перенос из Kaiten" на указанном диске.
@@ -805,21 +916,15 @@ class BitrixClient:
     async def upload_file(self, file_content: bytes, filename: str, group_id: int) -> Optional[str]:
         """
         Загружает файл в Bitrix24 через disk.folder.uploadfile в служебную папку группы.
+        Если файл уже существует, возвращает ID существующего файла.
         
         :param file_content: Содержимое файла в байтах
         :param filename: Имя файла
         :param group_id: ID группы в Bitrix24
-        :return: ID загруженного файла с префиксом 'n' или None
+        :return: ID файла с префиксом 'n' или None
         """
         try:
-            import base64
-            import time
-            from pathlib import Path
-            
-            # Кодируем файл в base64 для API Bitrix24
-            file_base64 = base64.b64encode(file_content).decode('utf-8')
-            
-            logger.debug(f"Загружаем файл '{filename}' размером {len(file_content)} байт для группы {group_id}...")
+            logger.debug(f"Проверяем/загружаем файл '{filename}' размером {len(file_content)} байт для группы {group_id}...")
             
             # Получаем хранилище группы
             storage_id = await self.get_group_storage(group_id)
@@ -832,6 +937,20 @@ class BitrixClient:
             if not kaiten_folder_id:
                 logger.error("❌ Не удалось получить/создать папку 'Перенос из Kaiten'")
                 return None
+            
+            # Сначала проверяем, существует ли уже такой файл
+            existing_file_id = await self.find_file_in_folder(kaiten_folder_id, filename)
+            if existing_file_id:
+                logger.success(f"✅ Файл '{filename}' уже существует в Bitrix24 с ID: {existing_file_id.replace('n', '')} (используем существующий)")
+                return existing_file_id
+            
+            # Файла нет, загружаем новый
+            import base64
+            import time
+            from pathlib import Path
+            
+            # Кодируем файл в base64 для API Bitrix24
+            file_base64 = base64.b64encode(file_content).decode('utf-8')
             
             # Пробуем загрузить файл с исходным именем
             original_filename = filename

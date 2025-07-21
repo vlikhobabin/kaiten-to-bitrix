@@ -6,6 +6,7 @@
 import asyncio
 import json
 import subprocess
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -85,7 +86,8 @@ class CardMigrator:
             'checklists_migrated': 0,  # Счетчик перенесенных чек-листов
             'checklist_items_migrated': 0,  # Счетчик перенесенных элементов чек-листов
             'comments_migrated': 0,  # Счетчик перенесенных комментариев
-            'comments_skipped': 0   # Счетчик пропущенных комментариев (от ботов)
+            'comments_skipped': 0,   # Счетчик пропущенных комментариев (от ботов)
+            'description_files_migrated': 0  # Счетчик файлов из описания
         }
 
     async def load_user_mapping(self) -> bool:
@@ -560,6 +562,16 @@ class CardMigrator:
             target_stage: Название целевой стадии
         """
         try:
+            # Обрабатываем файлы в описании и обновляем описание
+            original_description = getattr(card, 'description', '') or ""
+            updated_description, migrated_files = await self.migrate_description_files(
+                card.id, target_group_id, original_description
+            )
+            
+            # Временно обновляем описание карточки для трансформации
+            if hasattr(card, 'description'):
+                card.description = updated_description
+            
             # Трансформируем карточку в формат Bitrix24
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
@@ -585,6 +597,8 @@ class CardMigrator:
             
             if task_id:
                 logger.success(f"✅ Карточка '{card.title}' -> Задача ID {task_id} (стадия '{target_stage}')")
+                if migrated_files > 0:
+                    logger.info(f"   📎 Перенесено {migrated_files} файлов из описания")
                 
                 # Добавляем в маппинг и сохраняем
                 self.card_mapping[str(card.id)] = str(task_id)
@@ -604,6 +618,10 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка миграции карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
+        finally:
+            # Восстанавливаем исходное описание карточки
+            if hasattr(card, 'description'):
+                card.description = original_description
 
     async def update_existing_card(self, card: Union[KaitenCard, SimpleKaitenCard], task_id: int, target_group_id: int, target_stage: str):
         """
@@ -616,6 +634,16 @@ class CardMigrator:
             target_stage: Название целевой стадии
         """
         try:
+            # Обрабатываем файлы в описании и обновляем описание
+            original_description = getattr(card, 'description', '') or ""
+            updated_description, migrated_files = await self.migrate_description_files(
+                card.id, target_group_id, original_description
+            )
+            
+            # Временно обновляем описание карточки для трансформации
+            if hasattr(card, 'description'):
+                card.description = updated_description
+            
             # Трансформируем карточку в формат Bitrix24
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
@@ -637,6 +665,8 @@ class CardMigrator:
             
             if success:
                 logger.success(f"✅ Обновлена задача ID {task_id} из карточки '{card.title}' (стадия '{target_stage}')")
+                if migrated_files > 0:
+                    logger.info(f"   📎 Перенесено {migrated_files} файлов из описания")
                 
                 # Мигрируем чек-листы (при обновлении тоже синхронизируем)
                 await self.migrate_card_checklists(card.id, task_id, card.title, is_update=True)
@@ -652,6 +682,10 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка обновления задачи ID {task_id} для карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
+        finally:
+            # Восстанавливаем исходное описание карточки
+            if hasattr(card, 'description'):
+                card.description = original_description
 
     async def migrate_card_checklists(self, card_id: int, task_id: int, card_title: str, is_update: bool = False) -> bool:
         """
@@ -1020,6 +1054,119 @@ class CardMigrator:
             logger.error(f"Ошибка миграции комментариев для карточки '{card_title}': {e}")
             return False
 
+    def parse_file_links_from_description(self, description: str) -> List[Tuple[str, str, str]]:
+        """
+        Парсит ссылки на файлы из описания карточки.
+        
+        Args:
+            description: Текст описания карточки
+            
+        Returns:
+            Список кортежей (filename, file_url, full_markdown_link)
+        """
+        file_links = []
+        if not description:
+            return file_links
+        
+        # Регулярное выражение для поиска Markdown ссылок на files.kaiten.ru
+        # Формат: [filename](https://files.kaiten.ru/uuid.ext)
+        pattern = r'\[([^\]]+)\]\((https://files\.kaiten\.ru/[^)]+)\)'
+        
+        matches = re.findall(pattern, description)
+        for filename, file_url in matches:
+            full_link = f'[{filename}]({file_url})'
+            file_links.append((filename, file_url, full_link))
+            logger.debug(f"Найдена ссылка на файл: {filename} -> {file_url}")
+        
+        return file_links
+
+    async def migrate_description_files(self, card_id: int, target_group_id: int, 
+                                      description: str) -> Tuple[str, int]:
+        """
+        Переносит файлы из описания карточки в Bitrix24 и обновляет ссылки.
+        
+        Args:
+            card_id: ID карточки Kaiten
+            target_group_id: ID группы в Bitrix24
+            description: Исходное описание карточки
+            
+        Returns:
+            Кортеж (обновленное_описание, количество_перенесенных_файлов)
+        """
+        if not description:
+            return description, 0
+        
+        logger.debug(f"🔍 Поиск файлов в описании карточки {card_id}...")
+        
+        # Парсим ссылки на файлы из описания
+        file_links = self.parse_file_links_from_description(description)
+        
+        if not file_links:
+            logger.debug(f"В описании карточки {card_id} не найдено ссылок на файлы")
+            return description, 0
+        
+        logger.info(f"📎 Найдено {len(file_links)} файлов в описании для переноса")
+        
+        # Получаем все файлы карточки из API
+        card_files = await self.kaiten_client.get_card_files(card_id)
+        
+        # Создаем маппинг URL -> файл из API для быстрого поиска
+        files_by_url = {}
+        for file_info in card_files:
+            file_url = file_info.get('url', '')
+            if file_url:
+                files_by_url[file_url] = file_info
+        
+        updated_description = description
+        migrated_files_count = 0
+        
+        # Обрабатываем каждую ссылку на файл
+        for filename, file_url, full_link in file_links:
+            try:
+                # Проверяем, есть ли файл в API карточки
+                if file_url not in files_by_url:
+                    logger.warning(f"   ⚠️ Файл '{filename}' не найден в API карточки, пропускаем")
+                    continue
+                
+                logger.debug(f"   ⬇️ Скачиваем файл '{filename}' из Kaiten...")
+                
+                # Скачиваем файл из Kaiten
+                file_content = await self.kaiten_client.download_file(file_url)
+                
+                if not file_content:
+                    logger.warning(f"   ⚠️ Не удалось скачать файл '{filename}', оставляем исходную ссылку")
+                    continue
+                
+                # Проверяем/загружаем файл в Bitrix24
+                logger.debug(f"   📤 Обрабатываем файл '{filename}'...")
+                file_id = await self.bitrix_client.upload_file(file_content, filename, target_group_id)
+                
+                if file_id:
+                    # Формируем новую ссылку на файл в Bitrix24
+                    # Используем правильный URL для просмотра файла
+                    file_url = self.bitrix_client.get_file_url(file_id)
+                    new_link = f'[{filename}]({file_url})'
+                    
+                    # Заменяем старую ссылку на новую в описании
+                    updated_description = updated_description.replace(full_link, new_link)
+                    
+                    migrated_files_count += 1
+                    logger.debug(f"   ✅ Ссылка обновлена: {filename} -> {file_url}")
+                    # Логика определения, был ли файл загружен заново или уже существовал,
+                    # обрабатывается в upload_file method BitrixClient
+                else:
+                    logger.warning(f"   ⚠️ Не удалось обработать файл '{filename}', оставляем исходную ссылку")
+                
+            except Exception as e:
+                logger.warning(f"   ❌ Ошибка переноса файла '{filename}': {e}")
+                continue
+        
+        if migrated_files_count > 0:
+            logger.success(f"✅ Перенесено {migrated_files_count} файлов из описания")
+            self.stats['description_files_migrated'] += migrated_files_count
+        
+        return updated_description, migrated_files_count
+
     def print_migration_stats(self):
         """Выводит статистику миграции"""
         logger.info("\n" + "="*50)
@@ -1039,4 +1186,6 @@ class CardMigrator:
             logger.info(f"Комментариев пропущено (боты): {self.stats['comments_skipped']}")
         if self.stats.get('files_migrated', 0) > 0:
             logger.info(f"Файлов в комментариях перенесено: {self.stats['files_migrated']}")
+        if self.stats['description_files_migrated'] > 0:
+            logger.info(f"Файлов из описания обработано: {self.stats['description_files_migrated']}")
         logger.info("="*50) 
