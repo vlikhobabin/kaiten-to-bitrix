@@ -1,4 +1,7 @@
 import httpx
+import json
+from pathlib import Path
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from config.settings import settings
@@ -20,6 +23,10 @@ class KaitenClient:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
+        
+        # Кеш для пользовательских свойств
+        self._properties_cache_file = Path(__file__).parent.parent / "mappings" / "custom_properties.json"
+        self._properties_cache: Optional[Dict] = None
 
     async def _request(self, method: str, endpoint: str, **kwargs) -> Optional[dict]:
         """
@@ -400,3 +407,186 @@ class KaitenClient:
         except Exception as e:
             logger.error(f"Ошибка скачивания файла {file_url}: {e}")
             return None
+
+    def _load_properties_cache(self) -> Dict:
+        """
+        Загружает кеш пользовательских свойств из файла.
+        
+        Returns:
+            Словарь с кешем или пустой словарь если файл не существует
+        """
+        if self._properties_cache is not None:
+            return self._properties_cache
+        
+        try:
+            if self._properties_cache_file.exists():
+                with open(self._properties_cache_file, 'r', encoding='utf-8') as f:
+                    self._properties_cache = json.load(f)
+                    logger.debug(f"Загружен кеш пользовательских свойств: {len(self._properties_cache.get('properties', {}))} полей")
+            else:
+                self._properties_cache = {
+                    "created_at": datetime.now().isoformat(),
+                    "description": "Кеш пользовательских свойств Kaiten",
+                    "properties": {},  # {property_id: property_info}
+                    "values": {}       # {property_id: [values_list]}
+                }
+                logger.debug("Создан новый кеш пользовательских свойств")
+            
+            return self._properties_cache
+            
+        except Exception as e:
+            logger.error(f"Ошибка загрузки кеша свойств: {e}")
+            return {
+                "created_at": datetime.now().isoformat(),
+                "description": "Кеш пользовательских свойств Kaiten",
+                "properties": {},
+                "values": {}
+            }
+
+    def _save_properties_cache(self) -> bool:
+        """
+        Сохраняет кеш пользовательских свойств в файл.
+        
+        Returns:
+            True в случае успеха
+        """
+        try:
+            # Создаем директорию если её нет
+            self._properties_cache_file.parent.mkdir(exist_ok=True)
+            
+            if self._properties_cache:
+                self._properties_cache["last_updated"] = datetime.now().isoformat()
+                
+                with open(self._properties_cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(self._properties_cache, f, ensure_ascii=False, indent=2)
+                
+                logger.debug(f"Кеш пользовательских свойств сохранен: {len(self._properties_cache.get('properties', {}))} полей")
+                return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка сохранения кеша свойств: {e}")
+            
+        return False
+
+    async def get_custom_properties(self) -> List[Dict[str, Any]]:
+        """
+        Получает список всех пользовательских свойств компании.
+        Использует кеш для ускорения работы.
+        
+        Returns:
+            Список пользовательских свойств
+        """
+        try:
+            # Загружаем кеш
+            cache = self._load_properties_cache()
+            
+            # Если кеш пустой, делаем запрос к API
+            if not cache.get('properties'):
+                logger.debug("Кеш пустой, загружаем свойства из API...")
+                endpoint = "/api/latest/company/custom-properties"
+                data = await self._request("GET", endpoint)
+                
+                if data and isinstance(data, list):
+                    logger.debug(f"Получено {len(data)} пользовательских свойств из API")
+                    
+                    # Сохраняем в кеш
+                    for prop in data:
+                        prop_id = str(prop.get('id'))
+                        if prop_id:
+                            cache['properties'][prop_id] = prop
+                    
+                    self._save_properties_cache()
+                    return data
+                else:
+                    logger.debug("Пользовательские свойства не найдены в API")
+                    return []
+            else:
+                # Возвращаем данные из кеша
+                properties_list = list(cache['properties'].values())
+                logger.debug(f"Возвращено {len(properties_list)} пользовательских свойств из кеша")
+                return properties_list
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении пользовательских свойств: {e}")
+            return []
+
+    async def get_custom_property(self, property_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Получает информацию о конкретном пользовательском свойстве.
+        Использует кеш для ускорения работы.
+        
+        Args:
+            property_id: ID пользовательского свойства
+            
+        Returns:
+            Информация о свойстве или None
+        """
+        try:
+            # Загружаем кеш
+            cache = self._load_properties_cache()
+            prop_id_str = str(property_id)
+            
+            # Проверяем кеш
+            if prop_id_str in cache.get('properties', {}):
+                prop = cache['properties'][prop_id_str]
+                logger.debug(f"Найдено свойство {property_id} в кеше: {prop.get('name', 'N/A')}")
+                return prop
+            
+            # Если нет в кеше, получаем все свойства (это обновит кеш)
+            all_properties = await self.get_custom_properties()
+            
+            # Ищем в полученных данных
+            for prop in all_properties:
+                if prop.get('id') == property_id:
+                    logger.debug(f"Найдено свойство {property_id}: {prop.get('name', 'N/A')}")
+                    return prop
+            
+            logger.debug(f"Свойство {property_id} не найдено")
+            return None
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении свойства {property_id}: {e}")
+            return None
+
+    async def get_custom_property_select_values(self, property_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список возможных значений для свойства типа "select".
+        Использует кеш для ускорения работы.
+        
+        Args:
+            property_id: ID пользовательского свойства
+            
+        Returns:
+            Список значений для выбора
+        """
+        try:
+            # Загружаем кеш
+            cache = self._load_properties_cache()
+            prop_id_str = str(property_id)
+            
+            # Проверяем кеш значений
+            if prop_id_str in cache.get('values', {}):
+                values = cache['values'][prop_id_str]
+                logger.debug(f"Возвращено {len(values)} значений для свойства {property_id} из кеша")
+                return values
+            
+            # Если нет в кеше, делаем запрос к API
+            logger.debug(f"Загружаем значения для свойства {property_id} из API...")
+            endpoint = f"/api/latest/company/custom-properties/{property_id}/select-values"
+            data = await self._request("GET", endpoint)
+            
+            if data and isinstance(data, list):
+                logger.debug(f"Получено {len(data)} значений для свойства {property_id} из API")
+                
+                # Сохраняем в кеш
+                cache['values'][prop_id_str] = data
+                self._save_properties_cache()
+                
+                return data
+            else:
+                logger.debug(f"Значения для свойства {property_id} не найдены в API")
+                return []
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении значений свойства {property_id}: {e}")
+            return []

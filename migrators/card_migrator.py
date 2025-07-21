@@ -9,7 +9,7 @@ import subprocess
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
 from connectors.kaiten_client import KaitenClient
 from connectors.bitrix_client import BitrixClient
@@ -565,7 +565,22 @@ class CardMigrator:
             # Получаем исходное описание
             original_description = getattr(card, 'description', '') or ""
             
-            # Трансформируем карточку в формат Bitrix24 с исходным описанием
+            # Извлекаем пользовательские поля и добавляем к описанию
+            custom_properties = await self.get_custom_properties_from_card(card)
+            custom_properties_text = await self.format_custom_properties_for_description(custom_properties)
+            
+            # Формируем итоговое описание с пользовательскими полями
+            if custom_properties_text:
+                enhanced_description = custom_properties_text + original_description
+                logger.debug(f"Добавлены пользовательские поля в описание карточки {card.id}")
+            else:
+                enhanced_description = original_description
+            
+            # Временно устанавливаем расширенное описание для трансформации
+            if hasattr(card, 'description'):
+                card.description = enhanced_description
+            
+            # Трансформируем карточку в формат Bitrix24 с расширенным описанием
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
             if not task_data:
@@ -596,12 +611,13 @@ class CardMigrator:
                 await self.save_card_mapping()
                 
                 # Обрабатываем файлы в описании с новым task_id и обновляем описание
+                # Используем enhanced_description для обработки файлов (включает пользовательские поля)
                 updated_description, migrated_files = await self.migrate_description_files(
-                    card.id, target_group_id, original_description, task_id
+                    card.id, target_group_id, enhanced_description, task_id
                 )
                 
                 # Если описание изменилось (файлы были перенесены), обновляем задачу
-                if updated_description != original_description:
+                if updated_description != enhanced_description:
                     update_success = await self.bitrix_client.update_task(
                         task_id=task_id,
                         DESCRIPTION=updated_description
@@ -623,6 +639,10 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка миграции карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
+        finally:
+            # Восстанавливаем исходное описание карточки
+            if hasattr(card, 'description'):
+                card.description = original_description
 
     async def update_existing_card(self, card: Union[KaitenCard, SimpleKaitenCard], task_id: int, target_group_id: int, target_stage: str):
         """
@@ -635,13 +655,26 @@ class CardMigrator:
             target_stage: Название целевой стадии
         """
         try:
-            # Обрабатываем файлы в описании и обновляем описание
+            # Получаем исходное описание
             original_description = getattr(card, 'description', '') or ""
+            
+            # Извлекаем пользовательские поля и добавляем к описанию
+            custom_properties = await self.get_custom_properties_from_card(card)
+            custom_properties_text = await self.format_custom_properties_for_description(custom_properties)
+            
+            # Формируем итоговое описание с пользовательскими полями
+            if custom_properties_text:
+                enhanced_description = custom_properties_text + original_description
+                logger.debug(f"Добавлены пользовательские поля в описание карточки {card.id} при обновлении")
+            else:
+                enhanced_description = original_description
+            
+            # Обрабатываем файлы в расширенном описании
             updated_description, migrated_files = await self.migrate_description_files(
-                card.id, target_group_id, original_description, task_id
+                card.id, target_group_id, enhanced_description, task_id
             )
             
-            # Временно обновляем описание карточки для трансформации
+            # Временно устанавливаем обновленное описание для трансформации
             if hasattr(card, 'description'):
                 card.description = updated_description
             
@@ -1054,6 +1087,138 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка миграции комментариев для карточки '{card_title}': {e}")
             return False
+
+    async def get_custom_properties_from_card(self, card: Union[KaitenCard, SimpleKaitenCard]) -> Dict[str, List[Any]]:
+        """
+        Извлекает пользовательские поля из карточки Kaiten.
+        
+        Args:
+            card: Карточка Kaiten
+            
+        Returns:
+            Словарь с пользовательскими полями {field_id: values}
+        """
+        properties = {}
+        
+        try:
+            # Проверяем есть ли атрибут properties в карточке
+            if hasattr(card, 'properties') and card.properties:
+                properties = card.properties
+                logger.debug(f"Найдено {len(properties)} пользовательских полей в карточке {card.id}")
+            else:
+                # Если properties нет в модели, получаем raw данные через API
+                logger.debug(f"Получаем raw данные карточки {card.id} для поиска пользовательских полей")
+                raw_data = await self.kaiten_client._request("GET", f"/api/v1/cards/{card.id}")
+                
+                if raw_data and 'properties' in raw_data and raw_data['properties']:
+                    properties = raw_data['properties']
+                    logger.debug(f"Найдено {len(properties)} пользовательских полей в raw данных карточки {card.id}")
+        except Exception as e:
+            logger.debug(f"Ошибка получения пользовательских полей карточки {card.id}: {e}")
+            
+        return properties
+
+    async def get_field_name_from_api(self, field_id: str) -> str:
+        """
+        Получает название поля через API Kaiten.
+        
+        Args:
+            field_id: ID поля (например, "365518")
+            
+        Returns:
+            Название поля или исходный ID если не найдено
+        """
+        try:
+            # Убираем префикс id_ если есть
+            clean_field_id = field_id.replace('id_', '') if field_id.startswith('id_') else field_id
+            
+            # Получаем информацию о поле через API
+            property_info = await self.kaiten_client.get_custom_property(int(clean_field_id))
+            if property_info and 'name' in property_info:
+                logger.debug(f"Получено название поля {clean_field_id} через API: {property_info['name']}")
+                return property_info['name']
+            
+            # Если поле не найдено, возвращаем исходный ID
+            logger.debug(f"Поле {clean_field_id} не найдено в API")
+            return f"Поле {clean_field_id}"
+                
+        except Exception as e:
+            logger.debug(f"Ошибка получения названия поля {field_id}: {e}")
+            return f"Поле {field_id}"
+
+    async def get_field_values_from_api(self, field_id: str, value_ids: List[Any]) -> str:
+        """
+        Получает текстовые значения поля через API Kaiten.
+        
+        Args:
+            field_id: ID поля
+            value_ids: Список ID значений
+            
+        Returns:
+            Отформатированная строка значений
+        """
+        try:
+            # Убираем префикс id_ если есть  
+            clean_field_id = field_id.replace('id_', '') if field_id.startswith('id_') else field_id
+            
+            # Получаем возможные значения поля через API
+            select_values = await self.kaiten_client.get_custom_property_select_values(int(clean_field_id))
+            
+            if select_values:
+                # Создаем маппинг ID -> текстовое значение
+                value_mapping = {}
+                for value_info in select_values:
+                    if 'id' in value_info and 'value' in value_info:
+                        value_mapping[str(value_info['id'])] = value_info['value']
+                
+                # Преобразуем ID значений в текст
+                text_values = []
+                for value_id in value_ids:
+                    value_text = value_mapping.get(str(value_id), str(value_id))
+                    text_values.append(value_text)
+                
+                logger.debug(f"Получены значения поля {clean_field_id} через API")
+                return "; ".join(text_values)
+            else:
+                # Если значения не найдены в API, возвращаем исходные ID
+                logger.debug(f"Значения для поля {clean_field_id} не найдены в API")
+                return "; ".join(str(v) for v in value_ids)
+            
+        except Exception as e:
+            logger.debug(f"Ошибка получения значений поля {field_id}: {e}")
+            # Возвращаем исходные ID если API недоступен
+            return "; ".join(str(v) for v in value_ids)
+
+    async def format_custom_properties_for_description(self, properties: Dict[str, List[Any]]) -> str:
+        """
+        Форматирует пользовательские поля для добавления в описание.
+        
+        Args:
+            properties: Словарь с пользовательскими полями
+            
+        Returns:
+            Отформатированный текст для добавления в описание
+        """
+        if not properties:
+            return ""
+        
+        lines = []
+        
+        for field_key, values in properties.items():
+            # Получаем человеко-читаемое название поля через API
+            field_name = await self.get_field_name_from_api(field_key)
+            
+            # Форматируем значения через API
+            if isinstance(values, list):
+                values_str = await self.get_field_values_from_api(field_key, values)
+            else:
+                values_str = await self.get_field_values_from_api(field_key, [values])
+            
+            # Используем HTML-теги для жирного выделения названия поля
+            lines.append(f"<b>{field_name}:</b> {values_str}")
+        
+        lines.append("")  # Пустая строка для разделения от основного описания
+        return "\n".join(lines)
 
     def parse_file_links_from_description(self, description: str) -> List[Tuple[str, str, str]]:
         """
