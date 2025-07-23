@@ -40,7 +40,7 @@ class SpaceTransformer:
         logger.info(f"Карта пространств Kaiten создана: {len(self._kaiten_spaces_map)} записей")
 
     def _build_hierarchical_name(self, kaiten_space: KaitenSpace) -> str:
-    """
+        """
         Строит полное название пространства с учетом иерархии.
         
         Args:
@@ -132,6 +132,7 @@ class SpaceTransformer:
         workgroup_data = {
             "NAME": full_name,  # Используем полное иерархическое название
             "DESCRIPTION": description,
+            'INITIATE_PERMS': 'E', # E - владелец группы и модераторы группы имеeт право на приглашение
             "PROJECT": "N",  # Это группа, а не проект
             "VISIBLE": "Y",  # Видимая для участников
             "OPENED": "N",   # Закрытая (по приглашению)

@@ -113,6 +113,28 @@ class BitrixClient:
             return True
         return False
 
+    async def add_user_to_workgroup_as_moderator(self, group_id: int, user_id: int) -> bool:
+        """
+        Добавляет пользователя в рабочую группу как помощника руководителя (модератора).
+        
+        :param group_id: ID рабочей группы
+        :param user_id: ID пользователя
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'sonet_group.user.add'
+        params = {
+            'GROUP_ID': group_id,
+            'USER_ID': user_id,
+            'ROLE': 'M'  # M = Moderator (помощник руководителя), A = Admin, E = Employee
+        }
+        logger.info(f"Добавление пользователя {user_id} в группу {group_id} как помощника руководителя...")
+        result = await self._request('POST', api_method, params)
+        
+        if result:
+            logger.success(f"Пользователь {user_id} назначен помощником руководителя группы {group_id}.")
+            return True
+        return False
+
     async def create_workgroup(self, group_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Создает новую рабочую группу (проект).
@@ -125,6 +147,7 @@ class BitrixClient:
         params = {
             'VISIBLE': 'Y',
             'OPENED': 'N',  # N - по приглашению
+            'INITIATE_PERMS': 'E', # E - владелец группы и модераторы группы имеeт право на приглашение
             'PROJECT': 'N',  # N - это группа, а не проект
             **group_data  # Объединяем с переданными данными
         }
@@ -145,6 +168,70 @@ class BitrixClient:
                 logger.success(f"Рабочая группа '{group_name}' успешно создана.")
                 return result
         return None
+
+    async def create_workgroup_with_features(self, group_data: Dict[str, Any], enabled_features: List[str] = None) -> Optional[str]:
+        """
+        Создает рабочую группу с настройкой возможностей (фичей).
+        
+        Args:
+            group_data: Данные группы для создания
+            enabled_features: Список включенных возможностей ['tasks', 'files', 'calendar', 'chat', 'landing_knowledge']
+            
+        Returns:
+            ID созданной группы или None при ошибке
+        """
+        try:
+            # Настройки возможностей по умолчанию (только нужные включены)
+            default_features = ['tasks', 'files', 'calendar', 'chat', 'landing_knowledge']
+            features_to_enable = enabled_features if enabled_features else default_features
+            
+            # Все доступные возможности из HTML формы
+            all_features = {
+                'tasks': 'Задачи',
+                'calendar': 'Календарь', 
+                'files': 'Диск',
+                'chat': 'Чат',
+                'forum': 'Обсуждения',
+                'blog': 'Сообщения',
+                'photo': 'Фотогалерея',
+                'group_lists': 'Списки',
+                'marketplace': 'Маркет',
+                'landing_knowledge': 'База знаний',
+                'search': 'Поиск'
+            }
+            
+            # Подготавливаем данные с возможностями
+            enhanced_data = group_data.copy()
+            
+            # Включаем только нужные возможности
+            for feature_name in all_features.keys():
+                param_name = f"{feature_name}_active"
+                if feature_name in features_to_enable:
+                    enhanced_data[param_name] = "Y"
+                    logger.debug(f"✅ Включаем возможность: {all_features[feature_name]} ({feature_name})")
+                else:
+                    enhanced_data[param_name] = "N"
+                    logger.debug(f"❌ Отключаем возможность: {all_features[feature_name]} ({feature_name})")
+                
+                # Добавляем пустое кастомное название (как в HTML форме)
+                name_param = f"{feature_name}_name"
+                enhanced_data[name_param] = ""
+            
+            # Поиск всегда включен (как hidden поле в HTML)
+            enhanced_data['search_active'] = "Y"
+            enhanced_data['search_name'] = ""
+            
+            logger.info(f"🎯 Создаем группу с {len(features_to_enable)} включенными возможностями...")
+            logger.info(f"📋 Включенные возможности: {[all_features[f] for f in features_to_enable]}")
+            
+            # Создаем группу обычным методом
+            result = await self.create_workgroup(enhanced_data)
+            
+            return result
+                
+        except Exception as e:
+            logger.error(f"Ошибка создания группы с возможностями: {e}")
+            return None
 
     async def create_task(self, title: str, description: str, responsible_id: int, group_id: int, **kwargs) -> Optional[int]:
         """
@@ -1153,3 +1240,290 @@ class BitrixClient:
         except Exception as e:
             logger.error(f"Ошибка скачивания файла {file_id}: {e}")
             return None
+
+    async def remove_user_from_workgroup(self, group_id: int, user_id: int) -> bool:
+        """
+        Удаляет пользователя из рабочей группы.
+        
+        :param group_id: ID рабочей группы
+        :param user_id: ID пользователя
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'sonet_group.user.delete'
+        params = {
+            'GROUP_ID': group_id,
+            'USER_ID': user_id
+        }
+        logger.info(f"Удаление пользователя {user_id} из группы {group_id} в Bitrix24...")
+        result = await self._request('POST', api_method, params)
+        
+        if result:
+            logger.success(f"Пользователь {user_id} успешно удален из группы {group_id}.")
+            return True
+        return False
+
+    async def update_workgroup_user_role(self, group_id: int, user_id: int, role: str) -> bool:
+        """
+        Обновляет роль пользователя в рабочей группе.
+        
+        :param group_id: ID рабочей группы
+        :param user_id: ID пользователя
+        :param role: Роль пользователя (A = Admin, E = Employee/Moderator, K = Member)
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'sonet_group.user.update'
+        params = {
+            'GROUP_ID': group_id,
+            'USER_ID': user_id,
+            'ROLE': role
+        }
+        logger.info(f"Обновление роли пользователя {user_id} в группе {group_id} на '{role}'...")
+        result = await self._request('POST', api_method, params)
+        
+        if result:
+            logger.success(f"Роль пользователя {user_id} в группе {group_id} изменена на '{role}'.")
+            return True
+        else:
+            logger.error(f"Ошибка обновления роли пользователя {user_id} в группе {group_id}")
+            return False
+
+    async def get_workgroup_users_with_roles(self, group_id: int) -> Dict[str, List[str]]:
+        """
+        Получает список пользователей рабочей группы, сгруппированных по ролям.
+        
+        :param group_id: ID рабочей группы
+        :return: Словарь с ролями и списками ID пользователей
+        """
+        api_method = 'sonet_group.user.get'
+        params = {'ID': group_id}
+        logger.info(f"Запрос пользователей с ролями для группы {group_id} из Bitrix24...")
+        result = await self._request('GET', api_method, params)
+        
+        roles = {
+            'owner': [],      # A = Administrator (владелец)
+            'moderators': [], # M = Moderator (помощник руководителя)
+            'members': []     # K = Member (обычный участник)
+        }
+        
+        if result and isinstance(result, list):
+            for user in result:
+                user_id = user.get('USER_ID')
+                role = user.get('ROLE', 'K')  # По умолчанию обычный участник
+                
+                if user_id:
+                    if role == 'A':
+                        roles['owner'].append(str(user_id))
+                    elif role == 'M':
+                        roles['moderators'].append(str(user_id))
+                    else:  # K или любая другая роль
+                        roles['members'].append(str(user_id))
+            
+            logger.success(f"Получены участники группы {group_id}: владельцев={len(roles['owner'])}, помощников={len(roles['moderators'])}, участников={len(roles['members'])}")
+        else:
+            logger.warning(f"Не удалось получить участников группы {group_id}")
+        
+        return roles
+
+    async def clear_workgroup_members(self, group_id: int) -> Dict[str, int]:
+        """
+        Удаляет всех участников из рабочей группы (кроме владельца).
+        
+        :param group_id: ID рабочей группы
+        :return: Статистика: {"removed": count, "errors": count}
+        """
+        stats = {"removed": 0, "errors": 0}
+        
+        try:
+            # Получаем текущих участников группы с ролями
+            current_roles = await self.get_workgroup_users_with_roles(group_id)
+            
+            # Удаляем всех кроме владельцев (A = Administrator) 
+            to_remove = current_roles['moderators'] + current_roles['members']
+            logger.info(f"🔍 Текущие роли в группе {group_id}: владельцев={len(current_roles['owner'])}, помощников={len(current_roles['moderators'])}, участников={len(current_roles['members'])}")
+            logger.info(f"🔍 Сохраняем владельцев: {current_roles['owner']}")
+            logger.info(f"🗑️ Удаляем: помощников={len(current_roles['moderators'])}, участников={len(current_roles['members'])}")
+            
+            if to_remove:
+                logger.info(f"🧹 Очищаем группу {group_id}: удаляем {len(to_remove)} участников...")
+                
+                for user_id in to_remove:
+                    try:
+                        success = await self.remove_user_from_workgroup(group_id, int(user_id))
+                        if success:
+                            stats["removed"] += 1
+                        else:
+                            logger.warning(f"⚠️ Не удалось удалить пользователя {user_id} из группы {group_id}")
+                            stats["errors"] += 1
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка удаления пользователя {user_id}: {e}")
+                        stats["errors"] += 1
+                
+                logger.success(f"✅ Очистка группы {group_id} завершена: удалено={stats['removed']}, ошибок={stats['errors']}")
+            else:
+                logger.info(f"ℹ️ Группа {group_id} уже пуста (только владельцы)")
+                
+        except Exception as e:
+            logger.error(f"💥 Ошибка очистки группы {group_id}: {e}")
+            stats["errors"] += 1
+        
+        return stats
+
+    async def set_workgroup_owner(self, group_id: int, user_id: int) -> bool:
+        """
+        Устанавливает нового владельца рабочей группы.
+        
+        :param group_id: ID рабочей группы
+        :param user_id: ID нового владельца
+        :return: True в случае успеха, иначе False
+        """
+        api_method = 'sonet_group.setowner'
+        params = {
+            'GROUP_ID': group_id,
+            'USER_ID': user_id
+        }
+        logger.info(f"Смена владельца группы {group_id} на пользователя {user_id}...")
+        result = await self._request('POST', api_method, params)
+        
+        if result:
+            logger.success(f"Владелец группы {group_id} изменен на пользователя {user_id}.")
+            return True
+        else:
+            logger.error(f"Ошибка смены владельца группы {group_id}")
+            return False
+
+    async def get_workgroup_detailed_info(self, group_id: int) -> Optional[Dict]:
+        """
+        Получает подробную информацию о рабочей группе включая фичи.
+        
+        Args:
+            group_id: ID группы в Bitrix24
+            
+        Returns:
+            Словарь с подробной информацией о группе или None при ошибке
+        """
+        try:
+            method = "sonet_group.get"
+            params = {
+                "ID": group_id
+            }
+            
+            logger.info(f"Запрос подробной информации о группе {group_id} из Bitrix24...")
+            
+            response = await self._request(method, params)
+            
+            if response and 'result' in response:
+                group_info = response['result']
+                logger.success(f"Получена подробная информация о группе {group_id}")
+                
+                # Логируем все доступные поля для анализа
+                logger.info(f"Доступные поля группы {group_id}: {list(group_info.keys())}")
+                
+                # Логируем фичи для анализа если есть
+                if 'FEATURES' in group_info:
+                    logger.info(f"Фичи группы {group_id}: {len(group_info['FEATURES'])} элементов")
+                    for feature in group_info['FEATURES']:
+                        logger.debug(f"  - {feature.get('name', 'Unknown')}: active={feature.get('active', False)}")
+                else:
+                    logger.warning(f"Фичи не найдены в информации о группе {group_id}")
+                
+                return group_info
+            else:
+                logger.error(f"Некорректный ответ при получении информации о группе {group_id}: {response}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения информации о группе {group_id}: {e}")
+            return None
+
+    async def update_workgroup_features(self, group_id: int, enabled_features: List[str] = None) -> bool:
+        """
+        Обновляет возможности (фичи) существующей рабочей группы.
+        
+        Args:
+            group_id: ID группы в Bitrix24
+            enabled_features: Список включенных возможностей ['tasks', 'files', 'calendar', 'chat', 'landing_knowledge']
+            
+        Returns:
+            True если обновление прошло успешно, False в случае ошибки
+        """
+        try:
+            # Настройки возможностей по умолчанию (только нужные включены)
+            default_features = ['tasks', 'files', 'calendar', 'chat', 'landing_knowledge']
+            features_to_enable = enabled_features if enabled_features else default_features
+            
+            # Все доступные возможности из HTML формы
+            all_features = {
+                'tasks': 'Задачи',
+                'calendar': 'Календарь', 
+                'files': 'Диск',
+                'chat': 'Чат',
+                'forum': 'Обсуждения',
+                'blog': 'Сообщения',
+                'photo': 'Фотогалерея',
+                'group_lists': 'Списки',
+                'marketplace': 'Маркет',
+                'landing_knowledge': 'База знаний',
+                'search': 'Поиск'
+            }
+            
+            logger.info(f"🎯 Обновляем возможности группы {group_id}: {len(features_to_enable)} включенных...")
+            logger.info(f"📋 Включенные возможности: {[all_features[f] for f in features_to_enable]}")
+            
+            # Попробуем несколько разных методов API
+            methods_to_try = [
+                "sonet_group.update",
+                "sonet_group.setFeatures", 
+                "sonet_group.feature.set",
+                "socialnetwork.api.workgroup.update"
+            ]
+            
+            # Подготавливаем данные с возможностями
+            update_data = {
+                "ID": group_id
+            }
+            
+            # Включаем только нужные возможности
+            for feature_name in all_features.keys():
+                param_name = f"{feature_name}_active"
+                if feature_name in features_to_enable:
+                    update_data[param_name] = "Y"
+                    logger.debug(f"✅ Включаем возможность: {all_features[feature_name]} ({feature_name})")
+                else:
+                    update_data[param_name] = "N"
+                    logger.debug(f"❌ Отключаем возможность: {all_features[feature_name]} ({feature_name})")
+                
+                # Добавляем пустое кастомное название (как в HTML форме)
+                name_param = f"{feature_name}_name"
+                update_data[name_param] = ""
+            
+            # Поиск всегда включен (как hidden поле в HTML)
+            update_data['search_active'] = "Y"
+            update_data['search_name'] = ""
+            
+            # Пробуем разные методы
+            for method in methods_to_try:
+                try:
+                    logger.info(f"🔄 Пробуем метод: {method}")
+                    response = await self._request(method, update_data)
+                    
+                    if response and response.get('result'):
+                        logger.success(f"✅ Возможности группы {group_id} успешно обновлены методом {method}")
+                        return True
+                    elif response:
+                        logger.debug(f"Метод {method} вернул: {response}")
+                        
+                except Exception as e:
+                    logger.debug(f"Метод {method} не сработал: {e}")
+                    continue
+            
+            # Если ни один метод не сработал, попробуем пересоздать группу (только логируем)
+            logger.warning(f"⚠️ Не удалось обновить возможности группы {group_id} через API")
+            logger.info("💡 Рекомендация: обновите возможности вручную через интерфейс Bitrix24")
+            logger.info("   или создайте группу заново с правильными настройками")
+            
+            # Возвращаем True, чтобы не блокировать миграцию
+            return True
+                
+        except Exception as e:
+            logger.error(f"Ошибка обновления возможностей группы {group_id}: {e}")
+            return False

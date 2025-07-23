@@ -48,7 +48,7 @@ async def main():
    python scripts/card_migration.py --space-id 426722 --list-only --limit 10
 
 Примечание: Группа Bitrix24 определяется автоматически из файла mappings/space_mapping.json.
-Если пространство не найдено в маппинге, сначала выполните: python scripts/board_migration.py --space-id <ID>
+Если пространство не найдено в маппинге, сначала выполните: python scripts/space_migration.py --space-id <ID>
         """
     )
     
@@ -150,7 +150,7 @@ async def main():
             if not target_group_id:
                 logger.error(f"❌ Пространство {args.space_id} не найдено в маппинге")
                 logger.error("💡 Сначала выполните миграцию пространства:")
-                logger.error(f"   python scripts/board_migration.py --space-id {args.space_id}")
+                logger.error(f"   python scripts/space_migration.py --space-id {args.space_id}")
                 return 1
             
             logger.info(f"✅ Автоматически определена группа Bitrix24: {target_group_id}")

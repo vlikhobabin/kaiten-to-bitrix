@@ -590,3 +590,40 @@ class KaitenClient:
         except Exception as e:
             logger.debug(f"Ошибка при получении значений свойства {property_id}: {e}")
             return []
+
+    async def get_space_users_with_roles(self, space_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список пользователей пространства с их ролями и правами доступа.
+        
+        Args:
+            space_id: ID пространства
+            
+        Returns:
+            Список пользователей с ролями (включая администраторов и редакторов)
+        """
+        endpoint = f"/api/v1/spaces/{space_id}/users"
+        logger.info(f"Получение пользователей с ролями для пространства {space_id}...")
+        data = await self._request("GET", endpoint)
+        
+        if data and isinstance(data, list):
+            logger.success(f"Получено {len(data)} пользователей с ролями для пространства {space_id}")
+            return data
+        else:
+            logger.warning(f"Пользователи с ролями для пространства {space_id} не найдены")
+            return []
+
+    async def get_space_administrators(self, space_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список администраторов пространства (space_role_id = 3).
+        
+        Args:
+            space_id: ID пространства
+            
+        Returns:
+            Список администраторов пространства
+        """
+        users = await self.get_space_users_with_roles(space_id)
+        administrators = [user for user in users if user.get('space_role_id') == 3]
+        
+        logger.info(f"Найдено {len(administrators)} администраторов в пространстве {space_id}")
+        return administrators
