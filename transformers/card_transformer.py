@@ -61,14 +61,30 @@ class CardTransformer(BaseTransformer):
         # Получаем описание карточки
         description = getattr(card, 'description', '') or " "
         
+        # Формируем теги: добавляем название доски к существующим тегам
+        tags = []
+        
+        # Добавляем существующие теги из карточки
+        if card.tags:
+            tags.extend([tag.name for tag in card.tags])
+            logger.debug(f"Найдено {len(card.tags)} существующих тегов: {[tag.name for tag in card.tags]}")
+        
+        # Добавляем название доски как тег
+        board_name = self._get_board_title(card)
+        if board_name:
+            tags.append(board_name)
+            logger.debug(f"Добавлен тег с названием доски: '{board_name}'")
+        else:
+            logger.warning(f"Не удалось получить название доски для карточки '{card.title}'")
+        
         transformed_data = {
             "TITLE": card.title,
             "DESCRIPTION": description,
             "CREATED_BY": created_by_id,  # Постановщик - владелец карточки
             "RESPONSIBLE_ID": responsible_id,  # Исполнитель - первый участник
             "GROUP_ID": bitrix_group_id,
-            # Простое преобразование тегов
-            "TAGS": [tag.name for tag in card.tags] if card.tags else [],
+            # Преобразование тегов: существующие теги + название доски
+            "TAGS": tags,
             # Установка крайнего срока, если он есть
             "DEADLINE": card.due_date.isoformat() if card.due_date else None,
         }
@@ -80,6 +96,34 @@ class CardTransformer(BaseTransformer):
         # Удаляем поля с None, так как API Bitrix24 их не любит
         transformed_data = {k: v for k, v in transformed_data.items() if v is not None}
         
+        logger.debug(f"Итого тегов для задачи: {len(tags)} - {tags}" if tags else "Тегов для задачи нет")
+        
         logger.debug(f"Карточка '{card.title}' успешно трансформирована. Постановщик: {created_by_id}, Исполнитель: {responsible_id}" +
                     (f", Соисполнители: {accomplices}" if accomplices else ""))
         return transformed_data
+
+    def _get_board_title(self, card: Union[KaitenCard, SimpleKaitenCard]) -> Optional[str]:
+        """
+        Получает название доски для карточки.
+        
+        :param card: Карточка Kaiten
+        :return: Название доски или None
+        """
+        try:
+            # Проверяем различные способы получения названия доски
+            if hasattr(card, 'board') and card.board:
+                if hasattr(card.board, 'title') and card.board.title:
+                    return card.board.title
+                elif hasattr(card.board, 'name') and card.board.name:
+                    return card.board.name
+            
+            # Для случаев когда board может быть словарем
+            if hasattr(card, 'board') and isinstance(card.board, dict):
+                return card.board.get('title') or card.board.get('name')
+            
+            logger.debug(f"Доска не найдена для карточки {card.id}")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Ошибка получения названия доски для карточки {card.id}: {e}")
+            return None
