@@ -477,6 +477,7 @@ class SpaceMigrator:
         """
         Получает ID участников пространства в формате Bitrix24.
         Для дочерних пространств (2-го уровня) объединяет участников родительского и дочернего пространств.
+        ОБНОВЛЕНО: теперь также учитывает пользователей из групп доступа.
         """
         try:
             # Находим пространство в иерархии
@@ -493,20 +494,29 @@ class SpaceMigrator:
             # Определяем уровень пространства
             level = self.get_space_level(target_space)
             
-            all_bitrix_ids = set()  # Используем set для исключения дубликатов
+            all_bitrix_ids = set()
             
             if level == 2:
                 # Для пространства 2-го уровня объединяем участников родительского и дочернего
                 logger.info(f"🔗 Пространство 2-го уровня '{target_space.title}' - объединяем участников родительского и дочернего")
                 
-                # Получаем всех пользователей дочернего пространства с ролями
-                child_users = await self.kaiten_client.get_space_users_with_roles(space_id)
+                # Получаем ВСЕХ пользователей дочернего пространства с ролями (включая через группы)
+                logger.info(f"👥 Получаем всех пользователей дочернего пространства (включая через группы доступа)...")
+                child_users = await self.kaiten_client.get_all_space_users_including_groups(space_id)
                 
                 # Разделяем на администраторов и остальных
                 child_admins = [user for user in child_users if user.get('space_role_id') == 3]
                 child_others = [user for user in child_users if user.get('space_role_id') != 3]
                 
+                # Подсчитываем пользователей по типу доступа
+                roles_count = len([u for u in child_users if u.get('access_type') == 'roles'])
+                members_count = len([u for u in child_users if u.get('access_type') == 'members'])
+                both_count = len([u for u in child_users if u.get('access_type') == 'both'])
+                groups_count = len([u for u in child_users if u.get('access_type') == 'groups'])
+                groups_and_direct_count = len([u for u in child_users if u.get('access_type') == 'groups_and_direct'])
+                
                 logger.info(f"👥 Пользователей дочернего пространства: {len(child_others)} (редакторы+участники) + {len(child_admins)} (администраторы)")
+                logger.info(f"   📊 По типу доступа: роли={roles_count}, участники={members_count}, оба={both_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
                 
                 # Добавляем всех пользователей дочернего пространства (включая администраторов)
                 for user in child_users:
@@ -514,40 +524,77 @@ class SpaceMigrator:
                     bitrix_id = self.user_mapping.get(kaiten_id)
                     if bitrix_id:
                         all_bitrix_ids.add(bitrix_id)
+                        # Логируем пользователей с доступом через группы
+                        if user.get('access_type') in ['groups', 'groups_and_direct']:
+                            user_name = user.get('full_name', f'ID {kaiten_id}')
+                            groups = user.get('groups', [])
+                            logger.debug(f"   👥 {user_name} (через группы: {', '.join(groups)})")
                 
-                # Получаем всех пользователей родительского пространства (редакторы + участники)
+                # Получаем ВСЕХ пользователей родительского пространства (редакторы + участники, включая через группы)
                 if target_space.parent_entity_uid:
                     parent_space = self.spaces_hierarchy.get(target_space.parent_entity_uid)
                     if parent_space:
-                        # Получаем всех пользователей с ролями
-                        parent_users = await self.kaiten_client.get_space_users_with_roles(parent_space.id)
+                        # Получаем всех пользователей с ролями (включая через группы)
+                        logger.info(f"👥 Получаем всех пользователей родительского пространства (включая через группы доступа)...")
+                        parent_users = await self.kaiten_client.get_all_space_users_including_groups(parent_space.id)
                         
                         # Исключаем только администраторов (space_role_id == 3)
                         parent_members = [user for user in parent_users if user.get('space_role_id') != 3]
+                        
+                        # Подсчитываем пользователей по типу доступа
+                        p_roles_count = len([u for u in parent_members if u.get('access_type') == 'roles'])
+                        p_members_count = len([u for u in parent_members if u.get('access_type') == 'members'])
+                        p_both_count = len([u for u in parent_members if u.get('access_type') == 'both'])
+                        p_groups_count = len([u for u in parent_members if u.get('access_type') == 'groups'])
+                        p_groups_and_direct_count = len([u for u in parent_members if u.get('access_type') == 'groups_and_direct'])
+                        
                         logger.info(f"👥 Пользователей родительского пространства '{parent_space.title}': {len(parent_members)} (исключены администраторы)")
+                        logger.info(f"   📊 По типу доступа: роли={p_roles_count}, участники={p_members_count}, оба={p_both_count}, группы={p_groups_count}, группы+прямой={p_groups_and_direct_count}")
                         
                         for member in parent_members:
                             kaiten_id = str(member['id'])
                             bitrix_id = self.user_mapping.get(kaiten_id)
                             if bitrix_id:
                                 all_bitrix_ids.add(bitrix_id)
+                                # Логируем пользователей с доступом через группы
+                                if member.get('access_type') in ['groups', 'groups_and_direct']:
+                                    user_name = member.get('full_name', f'ID {kaiten_id}')
+                                    groups = member.get('groups', [])
+                                    logger.debug(f"   👥 {user_name} (через группы: {', '.join(groups)})")
                     else:
                         logger.warning(f"Родительское пространство не найдено для {target_space.title}")
             else:
-                # Для остальных пространств - получаем всех пользователей с ролями
-                logger.info(f"📍 Пространство {level}-го уровня '{target_space.title}' - берем всех пользователей с ролями")
-                space_users = await self.kaiten_client.get_space_users_with_roles(space_id)
+                # Для остальных пространств - получаем всех пользователей с ролями (включая через группы)
+                logger.info(f"📍 Пространство {level}-го уровня '{target_space.title}' - берем всех пользователей с ролями (включая через группы)")
+                space_users = await self.kaiten_client.get_all_space_users_including_groups(space_id)
+                
+                # Подсчитываем пользователей по типу доступа
+                roles_count = len([u for u in space_users if u.get('access_type') == 'roles'])
+                members_count = len([u for u in space_users if u.get('access_type') == 'members'])
+                both_count = len([u for u in space_users if u.get('access_type') == 'both'])
+                groups_count = len([u for u in space_users if u.get('access_type') == 'groups'])
+                groups_and_direct_count = len([u for u in space_users if u.get('access_type') == 'groups_and_direct'])
+                
+                logger.info(f"👥 Всего пользователей: {len(space_users)}")
+                logger.info(f"   📊 По типу доступа: роли={roles_count}, участники={members_count}, оба={both_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
                 
                 for user in space_users:
                     kaiten_id = str(user['id'])
                     bitrix_id = self.user_mapping.get(kaiten_id)
                     if bitrix_id:
                         all_bitrix_ids.add(bitrix_id)
+                        # Логируем пользователей с доступом через группы
+                        if user.get('access_type') in ['groups', 'groups_and_direct']:
+                            user_name = user.get('full_name', f'ID {kaiten_id}')
+                            groups = user.get('groups', [])
+                            logger.debug(f"   👥 {user_name} (через группы: {', '.join(groups)})")
                     else:
-                        logger.warning(f"⚠️ Пользователь {user.get('full_name', 'Unknown')} (ID: {kaiten_id}) не найден в маппинге")
+                        user_name = user.get('full_name', 'Unknown')
+                        access_info = f" (доступ: {user.get('access_type', 'unknown')})"
+                        logger.warning(f"⚠️ Пользователь {user_name} (ID: {kaiten_id}){access_info} не найден в маппинге")
             
             result = list(all_bitrix_ids)
-            logger.info(f"👥 Итого найдено {len(result)} уникальных участников для пространства {space_id}")
+            logger.success(f"👥 Итого найдено {len(result)} уникальных участников для пространства {space_id} (включая пользователей из групп доступа)")
             return result
             
         except Exception as e:

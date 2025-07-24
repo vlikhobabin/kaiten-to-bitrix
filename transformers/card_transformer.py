@@ -24,7 +24,7 @@ class CardTransformer(BaseTransformer):
         :param bitrix_group_id: ID группы (проекта) в Bitrix24, к которой будет привязана задача.
         :return: Словарь с данными для метода tasks.task.add или None, если ответственный не найден.
         """
-        logger.info(f"Трансформация карточки '{card.title}' (ID: {card.id}) для Bitrix24...")
+        logger.debug(f"Трансформация карточки '{card.title}' (ID: {card.id}) для Bitrix24...")
 
         # Определяем постановщика (заказчика) - это владелец карточки
         created_by_id = self.user_transformer.get_user_id(card.owner)
@@ -56,7 +56,7 @@ class CardTransformer(BaseTransformer):
         else:
             # Если участников нет, ответственным назначаем владельца карточки
             responsible_id = created_by_id
-            logger.info(f"У карточки '{card.title}' нет участников, ответственным назначен владелец")
+            logger.debug(f"У карточки '{card.title}' нет участников, ответственным назначен владелец")
             
         # Получаем описание карточки
         description = getattr(card, 'description', '') or " "
@@ -80,6 +80,6 @@ class CardTransformer(BaseTransformer):
         # Удаляем поля с None, так как API Bitrix24 их не любит
         transformed_data = {k: v for k, v in transformed_data.items() if v is not None}
         
-        logger.success(f"Карточка '{card.title}' успешно трансформирована. Постановщик: {created_by_id}, Исполнитель: {responsible_id}" + 
-                      (f", Соисполнители: {accomplices}" if accomplices else ""))
+        logger.debug(f"Карточка '{card.title}' успешно трансформирована. Постановщик: {created_by_id}, Исполнитель: {responsible_id}" +
+                    (f", Соисполнители: {accomplices}" if accomplices else ""))
         return transformed_data

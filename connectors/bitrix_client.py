@@ -254,11 +254,11 @@ class BitrixClient:
                 **kwargs # Добавляем остальные поля, если они есть
             }
         }
-        logger.info(f"Создание задачи '{title}' в Bitrix24...")
+        logger.debug(f"Создание задачи '{title}' в Bitrix24...")
         result = await self._request('POST', api_method, params)
         if result and 'task' in result:
             task_id = result['task']['id']
-            logger.success(f"Задача '{title}' успешно создана с ID {task_id}.")
+            logger.debug(f"Задача '{title}' успешно создана с ID {task_id}.")
             return task_id
         return None
 
@@ -277,10 +277,10 @@ class BitrixClient:
         }
         
         task_title = kwargs.get('TITLE', f'ID {task_id}')
-        logger.info(f"Обновление задачи '{task_title}' (ID: {task_id}) в Bitrix24...")
+        logger.debug(f"Обновление задачи '{task_title}' (ID: {task_id}) в Bitrix24...")
         result = await self._request('POST', api_method, params)
         if result:
-            logger.success(f"Задача '{task_title}' (ID: {task_id}) успешно обновлена.")
+            logger.debug(f"Задача '{task_title}' (ID: {task_id}) успешно обновлена.")
             return True
         else:
             logger.error(f"Не удалось обновить задачу '{task_title}' (ID: {task_id})")
@@ -526,7 +526,10 @@ class BitrixClient:
         :return: Список стадий
         """
         api_method = 'task.stages.get'
-        params = {'entityId': entity_id}
+        params = {
+            'entityId': entity_id,
+            'isAdmin': True  # Запрашиваем с правами администратора
+        }
         logger.info(f"Запрос стадий канбана для группы {entity_id}...")
         result = await self._request('GET', api_method, params)
         if result:
@@ -553,7 +556,8 @@ class BitrixClient:
                 'COLOR': color,
                 'ENTITY_ID': entity_id,
                 'ENTITY_TYPE': 'GROUP'  # Указываем что это стадии для группы
-            }
+            },
+            'isAdmin': True  # Создаем с правами администратора
         }
         logger.info(f"Создание стадии '{title}' для группы {entity_id}...")
         result = await self._request('POST', api_method, params)
@@ -573,7 +577,8 @@ class BitrixClient:
         api_method = 'task.stages.update'
         params = {
             'id': stage_id,
-            'fields': fields
+            'fields': fields,
+            'isAdmin': True  # Обновляем с правами администратора
         }
         logger.info(f"Обновление стадии {stage_id}...")
         result = await self._request('POST', api_method, params)
@@ -590,7 +595,10 @@ class BitrixClient:
         :return: True в случае успеха, иначе False
         """
         api_method = 'task.stages.delete'
-        params = {'id': stage_id}
+        params = {
+            'id': stage_id,
+            'isAdmin': True  # Удаляем с правами администратора
+        }
         logger.info(f"Удаление стадии {stage_id}...")
         result = await self._request('POST', api_method, params)
         if result:
@@ -1091,7 +1099,7 @@ class BitrixClient:
             # Сначала проверяем, существует ли уже такой файл
             existing_file_id = await self.find_file_in_folder(target_folder_id, filename)
             if existing_file_id:
-                logger.success(f"✅ Файл '{filename}' уже существует в Bitrix24 с ID: {existing_file_id.replace('n', '')} (используем существующий)")
+                logger.debug(f"Файл '{filename}' уже существует в Bitrix24 с ID: {existing_file_id.replace('n', '')} (используем существующий)")
                 return existing_file_id
             
             # Файла нет, загружаем новый
@@ -1132,7 +1140,7 @@ class BitrixClient:
                     file_id = result['ID']
                     # Возвращаем ID с префиксом 'n' как требует API для комментариев
                     file_id_with_prefix = f"n{file_id}"
-                    logger.success(f"✅ Файл '{unique_filename}' успешно загружен в группу {group_id} с ID: {file_id} (для комментариев: {file_id_with_prefix})")
+                    logger.debug(f"Файл '{unique_filename}' успешно загружен в группу {group_id} с ID: {file_id} (для комментариев: {file_id_with_prefix})")
                     return file_id_with_prefix
                 else:
                     if attempt < 2:  # Не последняя попытка

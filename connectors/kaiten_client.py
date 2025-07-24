@@ -627,3 +627,504 @@ class KaitenClient:
         
         logger.info(f"Найдено {len(administrators)} администраторов в пространстве {space_id}")
         return administrators
+
+    async def get_space_access_groups(self, space_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список групп доступа для указанного пространства.
+        
+        Args:
+            space_id: ID пространства
+            
+        Returns:
+            Список групп доступа пространства
+        """
+        try:
+            # Пробуем возможные endpoints для получения групп доступа пространства
+            possible_endpoints = [
+                f"/api/v1/spaces/{space_id}/groups",
+                f"/api/v1/spaces/{space_id}/access-groups",
+                f"/api/v1/spaces/{space_id}/group-access"
+            ]
+            
+            for endpoint in possible_endpoints:
+                logger.debug(f"Пробую получить группы доступа пространства {space_id} через {endpoint}...")
+                data = await self._request("GET", endpoint)
+                
+                if data is not None:
+                    if isinstance(data, list):
+                        logger.success(f"Получено {len(data)} групп доступа для пространства {space_id} через {endpoint}")
+                        return data
+                    elif isinstance(data, dict) and 'groups' in data:
+                        groups = data['groups']
+                        logger.success(f"Получено {len(groups)} групп доступа для пространства {space_id} через {endpoint}")
+                        return groups
+                    else:
+                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                        continue
+            
+            # Если прямые endpoints не сработали, пробуем через API /api/latest/groups
+            logger.debug(f"Пробую получить группы доступа через общий endpoint...")
+            endpoint = "/api/latest/groups"
+            data = await self._request("GET", endpoint)
+            
+            if data and isinstance(data, list):
+                # Фильтруем группы, которые имеют доступ к указанному пространству
+                space_groups = []
+                for group in data:
+                    # Проверяем есть ли в группе информация о доступе к пространствам
+                    if self._group_has_space_access(group, space_id):
+                        space_groups.append(group)
+                
+                if space_groups:
+                    logger.success(f"Найдено {len(space_groups)} групп доступа для пространства {space_id} через фильтрацию")
+                    return space_groups
+            
+            logger.debug(f"Группы доступа для пространства {space_id} не найдены")
+            return []
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении групп доступа пространства {space_id}: {e}")
+            return []
+
+    def _group_has_space_access(self, group: Dict[str, Any], space_id: int) -> bool:
+        """
+        Проверяет имеет ли группа доступ к указанному пространству.
+        
+        Args:
+            group: Данные группы
+            space_id: ID пространства
+            
+        Returns:
+            True если группа имеет доступ к пространству
+        """
+        try:
+            # Возможные поля где может храниться информация о доступе к пространствам
+            possible_fields = ['spaces', 'space_ids', 'accessible_spaces', 'space_access']
+            
+            for field in possible_fields:
+                if field in group and group[field]:
+                    spaces_data = group[field]
+                    # Проверяем разные форматы хранения
+                    if isinstance(spaces_data, list):
+                        # Список ID пространств или объектов
+                        for item in spaces_data:
+                            if isinstance(item, int) and item == space_id:
+                                return True
+                            elif isinstance(item, dict) and item.get('id') == space_id:
+                                return True
+                            elif isinstance(item, dict) and item.get('space_id') == space_id:
+                                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Ошибка проверки доступа группы к пространству: {e}")
+            return False
+
+    async def get_group_members(self, group_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список участников группы доступа.
+        
+        Args:
+            group_id: ID группы доступа
+            
+        Returns:
+            Список участников группы
+        """
+        try:
+            # Пробуем возможные endpoints для получения участников группы
+            possible_endpoints = [
+                f"/api/latest/groups/{group_id}/members", 
+                f"/api/latest/groups/{group_id}/users",
+                f"/api/v1/groups/{group_id}/members",
+                f"/api/v1/groups/{group_id}/users"
+            ]
+            
+            for endpoint in possible_endpoints:
+                logger.debug(f"Пробую получить участников группы {group_id} через {endpoint}...")
+                data = await self._request("GET", endpoint)
+                
+                if data is not None:
+                    if isinstance(data, list):
+                        logger.debug(f"Получено {len(data)} участников группы {group_id} через {endpoint}")
+                        return data
+                    elif isinstance(data, dict) and 'members' in data:
+                        members = data['members']
+                        logger.debug(f"Получено {len(members)} участников группы {group_id} через {endpoint}")
+                        return members
+                    elif isinstance(data, dict) and 'users' in data:
+                        users = data['users']
+                        logger.debug(f"Получено {len(users)} участников группы {group_id} через {endpoint}")
+                        return users
+                    else:
+                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                        continue
+            
+            logger.debug(f"Участники группы {group_id} не найдены")
+            return []
+                
+        except Exception as e:
+            logger.debug(f"Ошибка при получении участников группы {group_id}: {e}")
+            return []
+
+    async def get_all_space_users_including_groups(self, space_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает ВСЕХ пользователей пространства включая пользователей из групп доступа.
+        
+        Args:
+            space_id: ID пространства
+            
+        Returns:
+            Список всех уникальных пользователей с доступом к пространству
+        """
+        try:
+            all_users = {}  # Используем словарь для автоматического удаления дубликатов по ID
+            
+            # 1. Получаем пользователей с ролями (администраторы, редакторы и некоторые участники)
+            logger.info(f"🔍 Получаем пользователей с ролями пространства {space_id}...")
+            users_with_roles = await self.get_space_users_with_roles(space_id)
+            
+            for user in users_with_roles:
+                user_id = user.get('id')
+                if user_id:
+                    all_users[user_id] = {
+                        **user,
+                        'access_type': 'roles',  # Помечаем как пользователя с ролью
+                        'source': 'roles'
+                    }
+            
+            logger.info(f"📋 Найдено {len(users_with_roles)} пользователей с ролями")
+            
+            # 2. Получаем всех участников пространства (включая обычных участников)
+            logger.info(f"🔍 Получаем всех участников пространства {space_id}...")
+            try:
+                space_members = await self.get_space_members(space_id)
+                
+                for member in space_members:
+                    # Обрабатываем как объект KaitenSpaceMember или словарь
+                    if hasattr(member, 'id'):
+                        user_id = member.id
+                        user_data = {
+                            'id': member.id,
+                            'full_name': member.full_name,
+                            'email': member.email,
+                            'space_role_id': getattr(member, 'space_role_id', None)
+                        }
+                    else:
+                        user_id = member.get('id')
+                        user_data = member
+                    
+                    if user_id:
+                        # Если пользователь уже есть из ролей, объединяем информацию
+                        if user_id in all_users:
+                            existing_access = all_users[user_id].get('access_type', 'roles')
+                            all_users[user_id].update(user_data)
+                            all_users[user_id]['access_type'] = 'both' if existing_access == 'roles' else 'members'
+                            all_users[user_id]['source'] = 'both'
+                        else:
+                            # Новый пользователь только из участников
+                            all_users[user_id] = {
+                                **user_data,
+                                'access_type': 'members',
+                                'source': 'members'
+                            }
+                
+                logger.info(f"📋 Найдено {len(space_members)} участников пространства")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка получения участников пространства {space_id}: {e}")
+                logger.info("Продолжаем только с пользователями с ролями")
+            
+            # 3. Получаем группы доступа пространства
+            logger.info(f"🔍 Получаем группы доступа пространства {space_id}...")
+            access_groups = await self.get_space_access_groups(space_id)
+            
+            if access_groups:
+                logger.info(f"📋 Найдено {len(access_groups)} групп доступа для пространства")
+                
+                # 4. Получаем участников каждой группы доступа
+                for group in access_groups:
+                    group_id = group.get('id')
+                    group_name = group.get('name', f'ID {group_id}')
+                    
+                    if group_id:
+                        logger.info(f"👥 Получаем участников группы '{group_name}' (ID: {group_id})...")
+                        group_members = await self.get_group_members(group_id)
+                        
+                        for member in group_members:
+                            user_id = member.get('id')
+                            if user_id:
+                                # Если пользователь уже есть, обновляем информацию о доступе
+                                if user_id in all_users:
+                                    # Пользователь имеет доступ через несколько источников
+                                    existing_access = all_users[user_id].get('access_type', 'roles')
+                                    all_users[user_id]['access_type'] = 'groups_and_direct' if existing_access in ['roles', 'members', 'both'] else 'groups'
+                                    all_users[user_id]['groups'] = all_users[user_id].get('groups', []) + [group_name]
+                                else:
+                                    # Новый пользователь только через группу
+                                    all_users[user_id] = {
+                                        **member,
+                                        'access_type': 'groups',
+                                        'source': 'groups',
+                                        'groups': [group_name]
+                                    }
+                        
+                        logger.info(f"✅ Обработано {len(group_members)} участников группы '{group_name}'")
+                        
+            else:
+                logger.info("📋 Группы доступа не найдены для пространства")
+            
+            # Возвращаем всех уникальных пользователей
+            unique_users = list(all_users.values())
+            
+            # Подсчитываем статистику доступа
+            roles_count = len([u for u in unique_users if u.get('access_type') == 'roles'])
+            members_count = len([u for u in unique_users if u.get('access_type') == 'members'])
+            both_count = len([u for u in unique_users if u.get('access_type') == 'both'])
+            groups_count = len([u for u in unique_users if u.get('access_type') == 'groups'])
+            groups_and_direct_count = len([u for u in unique_users if u.get('access_type') == 'groups_and_direct'])
+            
+            logger.success(f"✅ Всего найдено {len(unique_users)} уникальных пользователей:")
+            logger.info(f"   📋 Только с ролями: {roles_count}")
+            logger.info(f"   👥 Только участники: {members_count}")
+            logger.info(f"   🔗 И роли, и участники: {both_count}")
+            logger.info(f"   👑 Только через группы: {groups_count}")
+            logger.info(f"   🌟 Группы + прямой доступ: {groups_and_direct_count}")
+            
+            return unique_users
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении всех пользователей пространства {space_id}: {e}")
+            return []
+
+    # ========== МЕТОДЫ ДЛЯ РАБОТЫ С ГРУППАМИ ДОСТУПА ==========
+    
+    async def get_all_groups(self) -> List[Dict[str, Any]]:
+        """
+        Получает список всех групп доступа в системе.
+        
+        Returns:
+            Список всех групп доступа
+        """
+        try:
+            # Пробуем разные endpoints из документации Kaiten
+            possible_endpoints = [
+                "/api/latest/groups",  # Исходный
+                "/api/v1/groups",      # Версия v1
+                "/groups",             # Без api prefix
+            ]
+            
+            for endpoint in possible_endpoints:
+                logger.info(f"🔍 Пробуем получить группы через {endpoint}...")
+                data = await self._request("GET", endpoint)
+                
+                if data is not None:
+                    if isinstance(data, list):
+                        logger.success(f"✅ Найдено {len(data)} групп доступа через {endpoint}")
+                        return data
+                    elif isinstance(data, dict) and 'groups' in data:
+                        groups = data['groups']
+                        logger.success(f"✅ Найдено {len(groups)} групп доступа через {endpoint}")
+                        return groups
+                    else:
+                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                        continue
+            
+            logger.warning("❌ Группы доступа не найдены ни через один endpoint")
+            return []
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении групп доступа: {e}")
+            return []
+
+    async def get_group_users(self, group_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список пользователей указанной группы.
+        
+        Args:
+            group_id: ID группы доступа
+            
+        Returns:
+            Список пользователей группы
+        """
+        try:
+            # Пробуем разные endpoints из документации
+            possible_configs = [
+                {"endpoint": "/api/latest/group-users", "params": {"group_id": group_id}},
+                {"endpoint": f"/api/latest/groups/{group_id}/users", "params": None},
+                {"endpoint": f"/api/v1/groups/{group_id}/users", "params": None},
+                {"endpoint": "/group-users", "params": {"group_id": group_id}},
+            ]
+            
+            for config in possible_configs:
+                endpoint = config["endpoint"]
+                params = config["params"]
+                
+                logger.info(f"👥 Пробуем получить пользователей группы {group_id} через {endpoint}...")
+                data = await self._request("GET", endpoint, params=params)
+                
+                if data is not None:
+                    if isinstance(data, list):
+                        logger.success(f"✅ Найдено {len(data)} пользователей в группе {group_id} через {endpoint}")
+                        return data
+                    elif isinstance(data, dict) and 'users' in data:
+                        users = data['users']
+                        logger.success(f"✅ Найдено {len(users)} пользователей в группе {group_id} через {endpoint}")
+                        return users
+                    else:
+                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                        continue
+            
+            logger.warning(f"❌ Пользователи группы {group_id} не найдены ни через один endpoint")
+            return []
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении пользователей группы {group_id}: {e}")
+            return []
+
+    async def get_group_entities(self, group_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает список сущностей (entities) указанной группы.
+        Вероятно, это пространства к которым у группы есть доступ.
+        
+        Args:
+            group_id: ID группы доступа
+            
+        Returns:
+            Список сущностей группы (предположительно пространства)
+        """
+        try:
+            # Пробуем разные endpoints из документации
+            possible_configs = [
+                {"endpoint": "/api/latest/group-entities", "params": {"group_id": group_id}},
+                {"endpoint": f"/api/latest/groups/{group_id}/entities", "params": None},
+                {"endpoint": f"/api/v1/groups/{group_id}/entities", "params": None},
+                {"endpoint": "/group-entities", "params": {"group_id": group_id}},
+            ]
+            
+            for config in possible_configs:
+                endpoint = config["endpoint"]
+                params = config["params"]
+                
+                logger.info(f"📂 Пробуем получить сущности группы {group_id} через {endpoint}...")
+                data = await self._request("GET", endpoint, params=params)
+                
+                if data is not None:
+                    if isinstance(data, list):
+                        logger.success(f"✅ Найдено {len(data)} сущностей для группы {group_id} через {endpoint}")
+                        return data
+                    elif isinstance(data, dict) and 'entities' in data:
+                        entities = data['entities']
+                        logger.success(f"✅ Найдено {len(entities)} сущностей для группы {group_id} через {endpoint}")
+                        return entities
+                    else:
+                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                        continue
+            
+            logger.warning(f"❌ Сущности группы {group_id} не найдены ни через один endpoint")
+            return []
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении сущностей группы {group_id}: {e}")
+            return []
+
+    async def get_tree_entity_roles(self) -> List[Dict[str, Any]]:
+        """
+        Получает список ролей для древовидных сущностей.
+        
+        Returns:
+            Список ролей сущностей
+        """
+        try:
+            # Пробуем разные endpoints из документации
+            possible_endpoints = [
+                "/api/latest/tree-entity-roles",
+                "/api/v1/tree-entity-roles", 
+                "/tree-entity-roles",
+            ]
+            
+            for endpoint in possible_endpoints:
+                logger.info(f"🌳 Пробуем получить роли сущностей через {endpoint}...")
+                data = await self._request("GET", endpoint)
+                
+                if data is not None:
+                    if isinstance(data, list):
+                        logger.success(f"✅ Найдено {len(data)} ролей сущностей через {endpoint}")
+                        return data
+                    elif isinstance(data, dict) and 'roles' in data:
+                        roles = data['roles']
+                        logger.success(f"✅ Найдено {len(roles)} ролей сущностей через {endpoint}")
+                        return roles
+                    else:
+                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                        continue
+            
+            logger.warning("❌ Роли сущностей не найдены ни через один endpoint")
+            return []
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении ролей сущностей: {e}")
+            return []
+
+    async def get_tree_entities(self) -> List[Dict[str, Any]]:
+        """
+        Получает список древовидных сущностей.
+        
+        Returns:
+            Список древовидных сущностей (предположительно пространства)
+        """
+        try:
+            # Пробуем разные endpoints из документации
+            possible_endpoints = [
+                "/api/latest/tree-entities",
+                "/api/v1/tree-entities",
+                "/tree-entities",
+            ]
+            
+            for endpoint in possible_endpoints:
+                logger.info(f"🌳 Пробуем получить древовидные сущности через {endpoint}...")
+                data = await self._request("GET", endpoint)
+                
+                if data is not None:
+                    if isinstance(data, list):
+                        logger.success(f"✅ Найдено {len(data)} древовидных сущностей через {endpoint}")
+                        return data
+                    elif isinstance(data, dict) and 'entities' in data:
+                        entities = data['entities']
+                        logger.success(f"✅ Найдено {len(entities)} древовидных сущностей через {endpoint}")
+                        return entities
+                    else:
+                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                        continue
+            
+            logger.warning("❌ Древовидные сущности не найдены ни через один endpoint")
+            return []
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении древовидных сущностей: {e}")
+            return []
+
+    async def find_group_by_name(self, group_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Находит группу по названию.
+        
+        Args:
+            group_name: Название группы для поиска
+            
+        Returns:
+            Данные группы или None если не найдена
+        """
+        try:
+            all_groups = await self.get_all_groups()
+            
+            for group in all_groups:
+                if group.get('name') == group_name:
+                    logger.success(f"✅ Найдена группа '{group_name}' с ID {group.get('id')}")
+                    return group
+            
+            logger.warning(f"❌ Группа '{group_name}' не найдена")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка поиска группы '{group_name}': {e}")
+            return None

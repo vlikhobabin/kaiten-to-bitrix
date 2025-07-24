@@ -203,6 +203,7 @@ class CardMigrator:
     async def get_task_stages_by_names(self, group_id: int, stage_names: List[str]) -> Dict[str, str]:
         """
         Получает ID стадий задач по их названиям.
+        Если не может получить - создает стандартные стадии.
         
         Args:
             group_id: ID группы в Bitrix24
@@ -213,35 +214,80 @@ class CardMigrator:
         """
         try:
             logger.info(f"🔍 Получение стадий задач для группы {group_id}...")
-            stages_data = await self.bitrix_client.get_task_stages(group_id)
             
+            # Пытаемся получить существующие стадии
+            access_denied = False
+            try:
+                stages_data = await self.bitrix_client.get_task_stages(group_id)
+                
+                stage_mapping = {}
+                if stages_data:
+                    # API возвращает словарь {stage_id: stage_object}
+                    if isinstance(stages_data, dict):
+                        for stage_id, stage in stages_data.items():
+                            if isinstance(stage, dict):
+                                title = stage.get('TITLE', '') or stage.get('title', '')
+                                
+                                if title in stage_names:
+                                    stage_mapping[title] = str(stage_id)
+                                    logger.info(f"✅ Найдена стадия '{title}' с ID {stage_id}")
+                    # Fallback для случая, если API вернет список
+                    elif isinstance(stages_data, list):
+                        for stage in stages_data:
+                            if isinstance(stage, dict):
+                                title = stage.get('TITLE', '') or stage.get('title', '')
+                                stage_id = stage.get('ID') or stage.get('id')
+                                
+                                if title in stage_names and stage_id:
+                                    stage_mapping[title] = str(stage_id)
+                                    logger.info(f"✅ Найдена стадия '{title}' с ID {stage_id}")
+                
+                # Если нашли все нужные стадии - возвращаем их
+                if len(stage_mapping) == len(stage_names):
+                    logger.info(f"📊 Найдено {len(stage_mapping)} из {len(stage_names)} требуемых стадий")
+                    return stage_mapping
+                    
+            except Exception as e:
+                error_message = str(e)
+                if "ACCESS_DENIED" in error_message:
+                    access_denied = True
+                    logger.warning(f"⚠️ Нет доступа к стадиям группы {group_id}: {e}")
+                    logger.warning("💡 Стадии скорее всего существуют, но недоступны для просмотра")
+                    logger.warning("🔄 Продолжаем без привязки к стадиям - задачи будут создаваться в стадии по умолчанию")
+                    return {}  # Возвращаем пустой маппинг
+                else:
+                    logger.warning(f"⚠️ Не удалось получить существующие стадии: {e}")
+            
+            # Если была ошибка доступа - НЕ пытаемся создавать стадии
+            if access_denied:
+                logger.info("⚠️ Пропускаем создание стадий из-за ошибки доступа")
+                return {}
+            
+            # Если не смогли получить стадии или нашли не все - создаем недостающие
+            logger.info("📝 Создаем недостающие стандартные стадии для группы...")
             stage_mapping = {}
-            if stages_data:
-                # API возвращает словарь {stage_id: stage_object}
-                if isinstance(stages_data, dict):
-                    for stage_id, stage in stages_data.items():
-                        if isinstance(stage, dict):
-                            title = stage.get('TITLE', '') or stage.get('title', '')
-                            
-                            if title in stage_names:
-                                stage_mapping[title] = str(stage_id)
-                                logger.info(f"✅ Найдена стадия '{title}' с ID {stage_id}")
-                # Fallback для случая, если API вернет список
-                elif isinstance(stages_data, list):
-                    for stage in stages_data:
-                        if isinstance(stage, dict):
-                            title = stage.get('TITLE', '') or stage.get('title', '')
-                            stage_id = stage.get('ID') or stage.get('id')
-                            
-                            if title in stage_names and stage_id:
-                                stage_mapping[title] = str(stage_id)
-                                logger.info(f"✅ Найдена стадия '{title}' с ID {stage_id}")
             
-            logger.info(f"📊 Найдено {len(stage_mapping)} из {len(stage_names)} требуемых стадий")
+            for i, stage_name in enumerate(stage_names):
+                try:
+                    stage_data = await self.bitrix_client.create_task_stage(
+                        entity_id=group_id,
+                        title=stage_name,
+                        sort=(i + 1) * 100,  # 100, 200, 300...
+                        color="0066CC"
+                    )
+                    if stage_data and 'ID' in stage_data:
+                        stage_mapping[stage_name] = str(stage_data['ID'])
+                        logger.info(f"✅ Создана стадия '{stage_name}' с ID {stage_data['ID']}")
+                    else:
+                        logger.warning(f"⚠️ Не удалось создать стадию '{stage_name}'")
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка создания стадии '{stage_name}': {e}")
+            
+            logger.info(f"📊 Итого настроено {len(stage_mapping)} из {len(stage_names)} требуемых стадий")
             return stage_mapping
             
         except Exception as e:
-            logger.error(f"Ошибка получения стадий: {e}")
+            logger.error(f"Критическая ошибка получения/создания стадий: {e}")
             return {}
 
     def get_target_stage_for_card(self, card: Union[KaitenCard, SimpleKaitenCard]) -> Optional[str]:
@@ -332,10 +378,15 @@ class CardMigrator:
                 required_stages = ["Новые", "Выполняются"]
                 self.stage_mapping = await self.get_task_stages_by_names(target_group_id, required_stages)
                 
-                if len(self.stage_mapping) != len(required_stages):
+                if len(self.stage_mapping) == 0:
+                    logger.warning("⚠️ Не удалось получить или создать ни одной стадии")
+                    logger.warning("🔄 Продолжаем миграцию без привязки к стадиям")
+                elif len(self.stage_mapping) != len(required_stages):
                     missing_stages = set(required_stages) - set(self.stage_mapping.keys())
-                    logger.error(f"❌ Не найдены обязательные стадии: {missing_stages}")
-                    return False
+                    logger.warning(f"⚠️ Не удалось получить стадии: {missing_stages}")
+                    logger.warning("🔄 Продолжаем миграцию с доступными стадиями")
+                else:
+                    logger.success("✅ Все необходимые стадии настроены")
             
             # Обрабатываем каждую доску
             processed_cards = 0
@@ -401,17 +452,34 @@ class CardMigrator:
                 required_stages = ["Новые", "Выполняются"]
                 self.stage_mapping = await self.get_task_stages_by_names(target_group_id, required_stages)
                 
-                if len(self.stage_mapping) != len(required_stages):
+                if len(self.stage_mapping) == 0:
+                    logger.warning("⚠️ Не удалось получить или создать ни одной стадии")
+                    logger.warning("🔄 Продолжаем миграцию без привязки к стадиям")
+                elif len(self.stage_mapping) != len(required_stages):
                     missing_stages = set(required_stages) - set(self.stage_mapping.keys())
-                    logger.error(f"❌ Не найдены обязательные стадии: {missing_stages}")
-                    return False
+                    logger.warning(f"⚠️ Не удалось получить стадии: {missing_stages}")
+                    logger.warning("🔄 Продолжаем миграцию с доступными стадиями")
+                else:
+                    logger.success("✅ Все необходимые стадии настроены")
             
             # Обрабатываем карточку
             self.stats['cards_total'] = 1
+            
+            # Запоминаем статистику до обработки
+            errors_before = self.stats['cards_failed']
+            filtered_before = self.stats['cards_filtered_out']
+            
             processed = await self.process_card(card, target_group_id, list_only)
             
             # Выводим статистику
             self.print_migration_stats()
+            
+            # Если карточка была отфильтрована (но без ошибок) - это успех
+            if not processed:
+                # Проверяем: была ли ошибка или просто фильтрация?
+                if self.stats['cards_failed'] == errors_before and self.stats['cards_filtered_out'] > filtered_before:
+                    logger.info("💡 Карточка отфильтрована согласно правилам миграции")
+                    return True  # Корректная фильтрация не является ошибкой
             
             return processed
             
@@ -505,6 +573,9 @@ class CardMigrator:
             True если карточка была обработана (не отфильтрована), False иначе
         """
         try:
+            # Логируем начало обработки карточки
+            if not list_only:
+                logger.info(f"🔄 Карточка {card.id}")
             # Проверяем, была ли карточка уже мигрирована
             card_id_str = str(card.id)
             if card_id_str in self.card_mapping:
@@ -514,13 +585,19 @@ class CardMigrator:
                     return True  # Считаем как обработанную
                 else:
                     # Обновляем существующую карточку
-                    logger.info(f"   🔄 Обновляем карточку '{card.title}' (ID: {card.id}) -> задача ID {existing_task_id}")
+                    logger.info(f"🔄 Карточка {card.id} -> обновляем задачу {existing_task_id}")
                     
                     # Определяем целевую стадию для обновления
                     target_stage = self.get_target_stage_for_card(card)
                     if not target_stage:
-                        self.stats['cards_filtered_out'] += 1
-                        return False
+                        if hasattr(card, 'column') and card.column and card.column.type == 3:
+                            # Это финальная колонка - пропускаем
+                            self.stats['cards_filtered_out'] += 1
+                            return False
+                        else:
+                            # Не финальная колонка, но стадия не определена - используем дефолтную
+                            target_stage = "Выполняются"
+                            logger.warning(f"⚠️ Не удалось определить стадию для карточки '{card.title}', используем '{target_stage}'")
                     
                     # Обновляем существующую задачу
                     await self.update_existing_card(card, int(existing_task_id), target_group_id, target_stage)
@@ -534,8 +611,14 @@ class CardMigrator:
             # Определяем целевую стадию
             target_stage = self.get_target_stage_for_card(card)
             if not target_stage:
-                self.stats['cards_filtered_out'] += 1
-                return False
+                if hasattr(card, 'column') and card.column and card.column.type == 3:
+                    # Это финальная колонка - пропускаем
+                    self.stats['cards_filtered_out'] += 1
+                    return False
+                else:
+                    # Не финальная колонка, но стадия не определена - используем дефолтную
+                    target_stage = "Выполняются"
+                    logger.warning(f"⚠️ Не удалось определить стадию для карточки '{card.title}', используем '{target_stage}'")
             
             if list_only:
                 # Режим просмотра - выводим информацию о карточке
@@ -584,7 +667,7 @@ class CardMigrator:
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
             if not task_data:
-                logger.warning(f"⚠️ Не удалось трансформировать карточку '{card.title}'")
+                logger.error(f"❌ Карточка {card.id}: не удалось трансформировать")
                 self.stats['cards_failed'] += 1
                 return
             
@@ -592,6 +675,9 @@ class CardMigrator:
             stage_id = self.stage_mapping.get(target_stage)
             if stage_id:
                 task_data['STAGE_ID'] = stage_id
+                logger.debug(f"Задача будет создана в стадии '{target_stage}' (ID: {stage_id})")
+            else:
+                logger.debug(f"Стадия '{target_stage}' не найдена в маппинге, создаем задачу без стадии")
             
             # Создаем задачу в Bitrix24 с исходным описанием
             task_id = await self.bitrix_client.create_task(
@@ -604,7 +690,7 @@ class CardMigrator:
             )
             
             if task_id:
-                logger.success(f"✅ Карточка '{card.title}' -> Задача ID {task_id} (стадия '{target_stage}')")
+                logger.info(f"✅ Карточка {card.id} -> Задача {task_id}")
                 
                 # Добавляем в маппинг и сохраняем
                 self.card_mapping[str(card.id)] = str(task_id)
@@ -623,7 +709,7 @@ class CardMigrator:
                         DESCRIPTION=updated_description
                     )
                     if update_success and migrated_files > 0:
-                        logger.info(f"   📎 Перенесено {migrated_files} файлов из описания в папку задачи {task_id}")
+                        logger.debug(f"Перенесено {migrated_files} файлов из описания в папку задачи {task_id}")
                 
                 # Мигрируем чек-листы
                 await self.migrate_card_checklists(card.id, task_id, card.title)
@@ -633,7 +719,7 @@ class CardMigrator:
                 
                 self.stats['cards_migrated'] += 1
             else:
-                logger.error(f"❌ Не удалось создать задачу для карточки '{card.title}'")
+                logger.error(f"❌ Карточка {card.id}: не удалось создать задачу")
                 self.stats['cards_failed'] += 1
                 
         except Exception as e:
@@ -682,7 +768,7 @@ class CardMigrator:
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
             if not task_data:
-                logger.warning(f"⚠️ Не удалось трансформировать карточку '{card.title}' для обновления")
+                logger.error(f"❌ Карточка {card.id}: не удалось трансформировать для обновления")
                 self.stats['cards_failed'] += 1
                 return
             
@@ -690,6 +776,9 @@ class CardMigrator:
             stage_id = self.stage_mapping.get(target_stage)
             if stage_id:
                 task_data['STAGE_ID'] = stage_id
+                logger.debug(f"Задача будет обновлена в стадии '{target_stage}' (ID: {stage_id})")
+            else:
+                logger.debug(f"Стадия '{target_stage}' не найдена в маппинге, обновляем задачу без изменения стадии")
             
             # Обновляем задачу в Bitrix24
             success = await self.bitrix_client.update_task(
@@ -698,9 +787,9 @@ class CardMigrator:
             )
             
             if success:
-                logger.success(f"✅ Обновлена задача ID {task_id} из карточки '{card.title}' (стадия '{target_stage}')")
+                logger.info(f"✅ Карточка {card.id} -> обновлена задача {task_id}")
                 if migrated_files > 0:
-                    logger.info(f"   📎 Перенесено {migrated_files} файлов из описания в папку задачи {task_id}")
+                    logger.debug(f"Перенесено {migrated_files} файлов из описания в папку задачи {task_id}")
                 
                 # Мигрируем чек-листы (при обновлении тоже синхронизируем)
                 await self.migrate_card_checklists(card.id, task_id, card.title, is_update=True)
@@ -710,7 +799,7 @@ class CardMigrator:
                 
                 self.stats['cards_updated'] += 1
             else:
-                logger.error(f"❌ Не удалось обновить задачу ID {task_id} для карточки '{card.title}'")
+                logger.error(f"❌ Карточка {card.id}: не удалось обновить задачу {task_id}")
                 self.stats['cards_failed'] += 1
                 
         except Exception as e:
@@ -762,7 +851,7 @@ class CardMigrator:
                 logger.debug(f"У карточки '{card_title}' нет чек-листов")
                 return True
             
-            logger.info(f"📋 Переносим {len(checklists)} чек-листов для карточки '{card_title}'")
+            logger.debug(f"Переносим {len(checklists)} чек-листов для карточки '{card_title}'")
             
             migrated_checklists = 0
             migrated_items = 0
@@ -813,7 +902,7 @@ class CardMigrator:
                     continue
             
             if migrated_checklists > 0:
-                logger.success(f"✅ Перенесено {migrated_checklists} чек-листов, {migrated_items} элементов")
+                logger.debug(f"Чек-листы: {migrated_checklists} перенесено, {migrated_items} элементов")
                 self.stats['checklists_migrated'] += migrated_checklists
                 self.stats['checklist_items_migrated'] += migrated_items
             
@@ -926,6 +1015,15 @@ class CardMigrator:
                 logger.debug(f"У карточки '{card_title}' нет комментариев")
                 return True
             
+            # Сортируем комментарии по дате создания (от старых к новым)
+            # чтобы они создавались в Bitrix24 в правильном хронологическом порядке
+            try:
+                comments.sort(key=lambda x: x.get('created', ''), reverse=False)
+                logger.debug(f"🕒 Отсортировано {len(comments)} комментариев по дате создания (от старых к новым)")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось отсортировать комментарии по дате: {e}")
+                # Продолжаем с исходным порядком комментариев
+            
             # Получаем файлы карточки для привязки к комментариям
             card_files = await self.kaiten_client.get_card_files(card_id)
             files_by_comment = {}  # {comment_id: [файлы]}
@@ -939,7 +1037,7 @@ class CardMigrator:
                             files_by_comment[comment_id] = []
                         files_by_comment[comment_id].append(file_info)
             
-            logger.info(f"💬 Переносим комментарии для карточки '{card_title}'" + 
+            logger.debug(f"Переносим комментарии для карточки '{card_title}'" + 
                        (f" с {len(card_files)} файлами" if card_files else ""))
             
             migrated_comments = 0
@@ -979,7 +1077,7 @@ class CardMigrator:
                     
                     # Проверяем дублирование при обновлении
                     if is_update and comment_text in existing_comments:
-                        logger.debug(f"   ⏭️ Комментарий уже существует, пропускаем")
+                        logger.debug(f"Комментарий уже существует, пропускаем")
                         continue
                     
                     # Обрабатываем файлы, прикрепленные к комментарию
@@ -1017,28 +1115,42 @@ class CardMigrator:
                                 logger.warning(f"   ⚠️ Не удалось скачать файл '{file_name}' из Kaiten")
                     
                     # Переносим комментарий с файлами (если есть)
-                    logger.debug(f"   💬 Комментарий от {author_name}: {comment_text[:50]}..." + 
+                    logger.debug(f"Комментарий от {author_name}: {comment_text[:50]}..." + 
                                (f" с {len(uploaded_file_ids)} файлами" if uploaded_file_ids else ""))
                     
-                    # Выбираем метод создания комментария в зависимости от наличия файлов
-                    if uploaded_file_ids:
-                        # Создаем комментарий с файлами с помощью нового метода
-                        comment_id = await self.bitrix_client.add_task_comment_with_file(
-                            task_id=task_id,
-                            text=comment_text,
-                            author_id=author_id_bitrix,
-                            file_id=uploaded_file_ids[0] if len(uploaded_file_ids) == 1 else None
-                            # Если файлов несколько, пока используем только первый
-                            # TODO: реализовать поддержку множественных файлов
-                        )
-                    else:
-                        # Создаем обычный комментарий без файлов
-                        comment_id = await self.bitrix_client.add_task_comment(
-                            task_id=task_id,
-                            text=comment_text,
-                            author_id=author_id_bitrix
-                            # Намеренно НЕ передаем created_date, так как API его игнорирует
-                        )
+                    # Создаем комментарий - либо с файлом (если есть), либо без файла
+                    comment_id = None
+                    
+                    try:
+                        if uploaded_file_ids:
+                            # Комментарий с файлом
+                            comment_id = await self.bitrix_client.add_task_comment_with_file(
+                                task_id=task_id,
+                                text=comment_text,
+                                author_id=author_id_bitrix,
+                                file_id=uploaded_file_ids[0]
+                            )
+                            
+                            if comment_id:
+                                logger.debug(f"Комментарий с файлом создан от имени {author_name} с ID {comment_id}")
+                            else:
+                                logger.error(f"Не удалось создать комментарий с файлом от {author_name}")
+                        else:
+                            # Комментарий без файла
+                            comment_id = await self.bitrix_client.add_task_comment(
+                                task_id=task_id,
+                                text=comment_text,
+                                author_id=author_id_bitrix
+                            )
+                            
+                            if comment_id:
+                                logger.debug(f"Комментарий без файла создан от имени {author_name} с ID {comment_id}")
+                            else:
+                                logger.error(f"Не удалось создать комментарий без файла от {author_name}")
+                                
+                    except Exception as e:
+                        logger.error(f"   ❌ Ошибка создания комментария от {author_name}: {e}")
+                        comment_id = None
                     
                     if comment_id:
                         migrated_comments += 1
@@ -1053,9 +1165,9 @@ class CardMigrator:
                                     comment_dates_to_update[str(comment_id)] = mysql_date
                                     logger.debug(f"   📅 Запланировано обновление даты комментария {comment_id} на {mysql_date}")
                             except Exception as e:
-                                logger.warning(f"   ⚠️ Ошибка преобразования даты '{created_date}': {e}")
+                                                                    logger.warning(f"   ⚠️ Ошибка преобразования даты '{created_date}': {e}")
                     else:
-                        logger.warning(f"⚠️ Не удалось перенести комментарий от {author_name}")
+                        logger.warning(f"Не удалось перенести комментарий от {author_name}")
                     
                 except Exception as e:
                     logger.warning(f"Ошибка переноса комментария: {e}")
@@ -1063,17 +1175,19 @@ class CardMigrator:
             
             # Обновляем даты созданных комментариев через SSH
             if comment_dates_to_update:
-                logger.info(f"🕒 Обновляем даты для {len(comment_dates_to_update)} комментариев через SSH...")
+                logger.debug(f"Обновляем даты для {len(comment_dates_to_update)} комментариев через SSH...")
                 ssh_success = self.update_comment_dates_via_ssh(comment_dates_to_update)
                 
                 if not ssh_success:
-                    logger.warning(f"⚠️ Не удалось обновить даты комментариев через SSH, но комментарии созданы")
+                    logger.warning(f"Не удалось обновить даты комментариев через SSH")
             
             if migrated_comments > 0 or skipped_comments > 0 or migrated_files > 0:
-                result_message = f"✅ Перенесено {migrated_comments} комментариев, пропущено {skipped_comments} (боты)"
+                result_message = f"Комментарии: {migrated_comments} перенесено"
+                if skipped_comments > 0:
+                    result_message += f", {skipped_comments} пропущено"
                 if migrated_files > 0:
                     result_message += f", файлов: {migrated_files}"
-                logger.success(result_message)
+                logger.debug(result_message)
                 self.stats['comments_migrated'] += migrated_comments
                 self.stats['comments_skipped'] += skipped_comments
                 
