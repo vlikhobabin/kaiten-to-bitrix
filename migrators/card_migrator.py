@@ -13,8 +13,8 @@ from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
 from connectors.kaiten_client import KaitenClient
 from connectors.bitrix_client import BitrixClient
-from models.kaiten_models import KaitenCard, KaitenBoard, KaitenColumn
-from models.simple_kaiten_models import SimpleKaitenCard
+from models.kaiten_models import KaitenCard, KaitenBoard, KaitenColumn, KaitenUser
+from models.simple_kaiten_models import SimpleKaitenCard, SimpleKaitenUser
 from transformers.card_transformer import CardTransformer
 from transformers.user_transformer import UserTransformer
 from config.settings import settings
@@ -22,7 +22,7 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-class UserMappingTransformer:
+class UserMappingTransformer(UserTransformer):
     """
     Упрощенный трансформер пользователей для работы с заранее созданным маппингом.
     """
@@ -30,7 +30,7 @@ class UserMappingTransformer:
     def __init__(self, user_mapping: Dict[str, str]):
         self.user_mapping = user_mapping  # kaiten_user_id -> bitrix_user_id
     
-    def get_user_id(self, kaiten_user) -> Optional[str]:
+    def get_user_id(self, kaiten_user: Union[KaitenUser, SimpleKaitenUser]) -> Optional[str]:
         """
         Возвращает ID пользователя Bitrix24 для пользователя Kaiten.
         
@@ -47,10 +47,12 @@ class UserMappingTransformer:
         bitrix_user_id = self.user_mapping.get(kaiten_user_id)
         
         if bitrix_user_id:
-            logger.debug(f"Найден маппинг: Kaiten user {kaiten_user.full_name} (ID: {kaiten_user_id}) -> Bitrix ID: {bitrix_user_id}")
+            user_name = getattr(kaiten_user, 'full_name', 'Unknown')
+            logger.debug(f"Найден маппинг: Kaiten user {user_name} (ID: {kaiten_user_id}) -> Bitrix ID: {bitrix_user_id}")
             return bitrix_user_id
         else:
-            logger.warning(f"Не найден маппинг для пользователя {kaiten_user.full_name} (ID: {kaiten_user_id})")
+            user_name = getattr(kaiten_user, 'full_name', 'Unknown')
+            logger.warning(f"Не найден маппинг для пользователя {user_name} (ID: {kaiten_user_id})")
             return None
 
 class CardMigrator:
@@ -230,21 +232,11 @@ class CardMigrator:
                                 
                                 if title in stage_names:
                                     stage_mapping[title] = str(stage_id)
-                                    logger.info(f"✅ Найдена стадия '{title}' с ID {stage_id}")
-                    # Fallback для случая, если API вернет список
-                    elif isinstance(stages_data, list):
-                        for stage in stages_data:
-                            if isinstance(stage, dict):
-                                title = stage.get('TITLE', '') or stage.get('title', '')
-                                stage_id = stage.get('ID') or stage.get('id')
-                                
-                                if title in stage_names and stage_id:
-                                    stage_mapping[title] = str(stage_id)
-                                    logger.info(f"✅ Найдена стадия '{title}' с ID {stage_id}")
+                                    logger.debug(f"✅ Найдена стадия '{title}' с ID {stage_id}")
                 
                 # Если нашли все нужные стадии - возвращаем их
                 if len(stage_mapping) == len(stage_names):
-                    logger.info(f"📊 Найдено {len(stage_mapping)} из {len(stage_names)} требуемых стадий")
+                    logger.debug(f"📊 Найдено {len(stage_mapping)} из {len(stage_names)} требуемых стадий")
                     return stage_mapping
                     
             except Exception as e:
@@ -275,11 +267,16 @@ class CardMigrator:
                         sort=(i + 1) * 100,  # 100, 200, 300...
                         color="0066CC"
                     )
-                    if stage_data and 'ID' in stage_data:
+                    # Проверяем, что stage_data это словарь и содержит ID
+                    if stage_data and isinstance(stage_data, dict) and 'ID' in stage_data:
                         stage_mapping[stage_name] = str(stage_data['ID'])
                         logger.info(f"✅ Создана стадия '{stage_name}' с ID {stage_data['ID']}")
+                    elif stage_data and isinstance(stage_data, (int, str)):
+                        # Если API вернул просто ID
+                        stage_mapping[stage_name] = str(stage_data)
+                        logger.info(f"✅ Создана стадия '{stage_name}' с ID {stage_data}")
                     else:
-                        logger.warning(f"⚠️ Не удалось создать стадию '{stage_name}'")
+                        logger.warning(f"⚠️ Не удалось создать стадию '{stage_name}': неожиданный ответ {stage_data}")
                 except Exception as e:
                     logger.warning(f"⚠️ Ошибка создания стадии '{stage_name}': {e}")
             
@@ -335,7 +332,7 @@ class CardMigrator:
         return True
 
     async def migrate_cards_from_space(self, space_id: int, target_group_id: int, 
-                                     list_only: bool = False, limit: int = None, card_id: int = None) -> bool:
+                                     list_only: bool = False, limit: int | None = None, card_id: int | None = None) -> bool:
         """
         Мигрирует карточки из всех досок указанного пространства.
         
@@ -487,7 +484,7 @@ class CardMigrator:
             logger.error(f"Ошибка обработки карточки {card_id}: {e}")
             return False
 
-    async def process_board(self, board: KaitenBoard, target_group_id: int, list_only: bool = False, limit: int = None):
+    async def process_board(self, board: KaitenBoard, target_group_id: int, list_only: bool = False, limit: int | None = None):
         """
         Обрабатывает карточки одной доски.
         
@@ -648,22 +645,18 @@ class CardMigrator:
             # Получаем исходное описание
             original_description = getattr(card, 'description', '') or ""
             
-            # Извлекаем пользовательские поля и добавляем к описанию
+            # Получаем пользовательские поля (но НЕ добавляем их в описание)
             custom_properties = await self.get_custom_properties_from_card(card)
-            custom_properties_text = await self.format_custom_properties_for_description(custom_properties)
             
-            # Формируем итоговое описание с пользовательскими полями
-            if custom_properties_text:
-                enhanced_description = custom_properties_text + original_description
-                logger.debug(f"Добавлены пользовательские поля в описание карточки {card.id}")
-            else:
-                enhanced_description = original_description
+            # Используем исходное описание БЕЗ пользовательских полей
+            enhanced_description = original_description
             
-            # Временно устанавливаем расширенное описание для трансформации
-            if hasattr(card, 'description'):
-                card.description = enhanced_description
-            
-            # Трансформируем карточку в формат Bitrix24 с расширенным описанием
+            # Трансформируем карточку в формат Bitrix24
+            if not self.card_transformer:
+                logger.error(f"❌ CardTransformer не инициализирован")
+                self.stats['cards_failed'] += 1
+                return
+                
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
             if not task_data:
@@ -696,6 +689,14 @@ class CardMigrator:
                 self.card_mapping[str(card.id)] = str(task_id)
                 await self.save_card_mapping()
                 
+                # ✅ Применяем пользовательские поля к созданной задаче
+                if custom_properties:
+                    success = await self.apply_custom_fields_to_bitrix_task(task_id, custom_properties)
+                    if success:
+                        logger.info(f"✅ Применены пользовательские поля к задаче {task_id}")
+                    else:
+                        logger.warning(f"❌ Не удалось применить пользовательские поля к задаче {task_id}")
+                
                 # Обрабатываем файлы в описании с новым task_id и обновляем описание
                 # Используем enhanced_description для обработки файлов (включает пользовательские поля)
                 updated_description, migrated_files = await self.migrate_description_files(
@@ -725,10 +726,6 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка миграции карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
-        finally:
-            # Восстанавливаем исходное описание карточки
-            if hasattr(card, 'description'):
-                card.description = original_description
 
     async def update_existing_card(self, card: Union[KaitenCard, SimpleKaitenCard], task_id: int, target_group_id: int, target_stage: str):
         """
@@ -744,27 +741,24 @@ class CardMigrator:
             # Получаем исходное описание
             original_description = getattr(card, 'description', '') or ""
             
-            # Извлекаем пользовательские поля и добавляем к описанию
+            # Получаем пользовательские поля (но НЕ добавляем их в описание)
             custom_properties = await self.get_custom_properties_from_card(card)
-            custom_properties_text = await self.format_custom_properties_for_description(custom_properties)
+            logger.info(f"🔧 Пользовательские поля карточки {card.id}: {custom_properties if custom_properties else 'нет полей'}")
             
-            # Формируем итоговое описание с пользовательскими полями
-            if custom_properties_text:
-                enhanced_description = custom_properties_text + original_description
-                logger.debug(f"Добавлены пользовательские поля в описание карточки {card.id} при обновлении")
-            else:
-                enhanced_description = original_description
+            # Используем исходное описание БЕЗ пользовательских полей
+            enhanced_description = original_description
             
             # Обрабатываем файлы в расширенном описании
             updated_description, migrated_files = await self.migrate_description_files(
                 card.id, target_group_id, enhanced_description, task_id
             )
             
-            # Временно устанавливаем обновленное описание для трансформации
-            if hasattr(card, 'description'):
-                card.description = updated_description
-            
             # Трансформируем карточку в формат Bitrix24
+            if not self.card_transformer:
+                logger.error(f"❌ CardTransformer не инициализирован")
+                self.stats['cards_failed'] += 1
+                return
+                
             task_data = self.card_transformer.transform(card, str(target_group_id))
             
             if not task_data:
@@ -791,6 +785,17 @@ class CardMigrator:
                 if migrated_files > 0:
                     logger.debug(f"Перенесено {migrated_files} файлов из описания в папку задачи {task_id}")
                 
+                # ✅ Применяем пользовательские поля к обновленной задаче
+                if custom_properties:
+                    logger.info(f"🔧 Применяем {len(custom_properties)} пользовательских полей к задаче {task_id}")
+                    fields_success = await self.apply_custom_fields_to_bitrix_task(task_id, custom_properties)
+                    if fields_success:
+                        logger.info(f"✅ Применены пользовательские поля к задаче {task_id}")
+                    else:
+                        logger.warning(f"❌ Не удалось применить пользовательские поля к задаче {task_id}")
+                else:
+                    logger.debug(f"У карточки {card.id} нет пользовательских полей для применения")
+                
                 # Мигрируем чек-листы (при обновлении тоже синхронизируем)
                 await self.migrate_card_checklists(card.id, task_id, card.title, is_update=True)
                 
@@ -805,10 +810,6 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка обновления задачи ID {task_id} для карточки '{card.title}': {e}")
             self.stats['cards_failed'] += 1
-        finally:
-            # Восстанавливаем исходное описание карточки
-            if hasattr(card, 'description'):
-                card.description = original_description
 
     async def migrate_card_checklists(self, card_id: int, task_id: int, card_title: str, is_update: bool = False) -> bool:
         """
@@ -888,12 +889,19 @@ class CardMigrator:
                         is_complete = item.get('checked', False) or item.get('completed', False)
                         
                         if item_text.strip():
-                            await self.bitrix_client.add_checklist_item(
-                                task_id=task_id,
-                                title=item_text,  # Убираем отступ и эмодзи - теперь это обычные элементы
-                                is_complete=is_complete,
-                                parent_id=group_id  # Указываем ID группы как родительский элемент (или None)
-                            )
+                            if group_id:
+                                await self.bitrix_client.add_checklist_item(
+                                    task_id=task_id,
+                                    title=item_text,  # Убираем отступ и эмодзи - теперь это обычные элементы
+                                    is_complete=is_complete,
+                                    parent_id=group_id  # Указываем ID группы как родительский элемент
+                                )
+                            else:
+                                await self.bitrix_client.add_checklist_item(
+                                    task_id=task_id,
+                                    title=item_text,  # Добавляем как отдельный элемент без родителя
+                                    is_complete=is_complete
+                                )
                             migrated_items += 1
                     
                 except Exception as e:
@@ -1216,8 +1224,9 @@ class CardMigrator:
         
         try:
             # Проверяем есть ли атрибут properties в карточке
-            if hasattr(card, 'properties') and card.properties:
-                properties = card.properties
+            card_properties = getattr(card, 'properties', None)
+            if card_properties:
+                properties = card_properties
                 logger.debug(f"Найдено {len(properties)} пользовательских полей в карточке {card.id}")
             else:
                 # Если properties нет в модели, получаем raw данные через API
@@ -1303,36 +1312,8 @@ class CardMigrator:
             # Возвращаем исходные ID если API недоступен
             return "; ".join(str(v) for v in value_ids)
 
-    async def format_custom_properties_for_description(self, properties: Dict[str, List[Any]]) -> str:
-        """
-        Форматирует пользовательские поля для добавления в описание.
-        
-        Args:
-            properties: Словарь с пользовательскими полями
-            
-        Returns:
-            Отформатированный текст для добавления в описание
-        """
-        if not properties:
-            return ""
-        
-        lines = []
-        
-        for field_key, values in properties.items():
-            # Получаем человеко-читаемое название поля через API
-            field_name = await self.get_field_name_from_api(field_key)
-            
-            # Форматируем значения через API
-            if isinstance(values, list):
-                values_str = await self.get_field_values_from_api(field_key, values)
-            else:
-                values_str = await self.get_field_values_from_api(field_key, [values])
-            
-            # Используем HTML-теги для жирного выделения названия поля
-            lines.append(f"<b>{field_name}:</b> {values_str}")
-        
-        lines.append("")  # Пустая строка для разделения от основного описания
-        return "\n".join(lines)
+    # УСТАРЕЛО: Метод format_custom_properties_for_description больше не используется
+    # Пользовательские поля теперь устанавливаются через API Bitrix24, а не добавляются в описание
 
     def parse_file_links_from_description(self, description: str) -> List[Tuple[str, str, str]]:
         """
@@ -1361,7 +1342,7 @@ class CardMigrator:
         return file_links
 
     async def migrate_description_files(self, card_id: int, target_group_id: int, 
-                                      description: str, task_id: int = None) -> Tuple[str, int]:
+                                      description: str, task_id: int | None = None) -> Tuple[str, int]:
         """
         Переносит файлы из описания карточки в Bitrix24 и обновляет ссылки.
         
@@ -1474,3 +1455,259 @@ class CardMigrator:
         if self.stats['description_files_migrated'] > 0:
             logger.info(f"Файлов из описания обработано: {self.stats['description_files_migrated']}")
         logger.info("="*50) 
+
+    async def apply_custom_fields_to_bitrix_task(self, bitrix_task_id: int, kaiten_properties: Dict[str, List[Any]]) -> bool:
+        """
+        Применяет пользовательские поля Kaiten к задаче Bitrix24.
+        Использует маппинг полей для преобразования значений.
+        
+        Args:
+            bitrix_task_id: ID задачи в Bitrix24
+            kaiten_properties: Пользовательские поля из карточки Kaiten
+            
+        Returns:
+            True в случае успеха
+        """
+        try:
+            if not kaiten_properties:
+                logger.debug(f"Нет пользовательских полей для задачи {bitrix_task_id}")
+                return True
+            
+            # Загружаем маппинг полей
+            mapping = self._load_custom_fields_mapping()
+            if not mapping.get('fields'):
+                logger.warning("Маппинг пользовательских полей не найден")
+                return False
+            
+            # Формируем данные полей для Bitrix
+            bitrix_fields_data = {}
+            
+            for kaiten_field_id, kaiten_values in kaiten_properties.items():
+                # Убираем префикс id_ если есть
+                clean_field_id = kaiten_field_id.replace('id_', '') if kaiten_field_id.startswith('id_') else kaiten_field_id
+                
+                # Ищем маппинг для этого поля
+                field_mapping = mapping['fields'].get(clean_field_id)
+                if not field_mapping:
+                    logger.debug(f"Маппинг для поля {clean_field_id} не найден, пропускаем")
+                    continue
+                
+                bitrix_field_name = field_mapping.get('bitrix_field_name')
+                values_mapping = field_mapping.get('values_mapping', {})
+                
+                if not bitrix_field_name:
+                    logger.warning(f"Имя поля Bitrix не найдено для {clean_field_id}")
+                    continue
+                
+                # Преобразуем значения Kaiten в значения Bitrix
+                if isinstance(kaiten_values, list):
+                    # Множественные значения
+                    bitrix_values = []
+                    for kaiten_value in kaiten_values:
+                        kaiten_value_str = str(kaiten_value)
+                        if kaiten_value_str in values_mapping:
+                            bitrix_values.append(values_mapping[kaiten_value_str])
+                        else:
+                            logger.debug(f"Маппинг для значения {kaiten_value_str} не найден")
+                    
+                    if bitrix_values:
+                        # Для пользовательских полей типа enumeration в Bitrix24
+                        # множественные значения передаются как массив
+                        bitrix_fields_data[bitrix_field_name] = bitrix_values if len(bitrix_values) > 1 else bitrix_values[0]
+                else:
+                    # Одиночное значение
+                    kaiten_value_str = str(kaiten_values)
+                    if kaiten_value_str in values_mapping:
+                        bitrix_fields_data[bitrix_field_name] = values_mapping[kaiten_value_str]
+                    else:
+                        logger.debug(f"Маппинг для значения {kaiten_value_str} не найден")
+            
+            # Устанавливаем поля в задаче Bitrix
+            if bitrix_fields_data:
+                success = await self.bitrix_client.set_task_custom_fields(bitrix_task_id, bitrix_fields_data)
+                if success:
+                    logger.debug(f"Применены пользовательские поля к задаче {bitrix_task_id}: {list(bitrix_fields_data.keys())}")
+                    return True
+                else:
+                    logger.warning(f"Не удалось применить пользовательские поля к задаче {bitrix_task_id}")
+                    return False
+            else:
+                logger.debug(f"Нет подходящих полей для применения к задаче {bitrix_task_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Ошибка применения пользовательских полей к задаче {bitrix_task_id}: {e}")
+            return False
+
+    def _load_custom_fields_mapping(self) -> Dict[str, Any]:
+        """
+        Загружает маппинг пользовательских полей из файла.
+        
+        Returns:
+            Словарь с маппингом полей
+        """
+        import json
+        from pathlib import Path
+        
+        try:
+            mapping_file = Path(__file__).parent.parent / "mappings" / "custom_fields_mapping.json"
+            
+            if mapping_file.exists():
+                with open(mapping_file, 'r', encoding='utf-8') as f:
+                    mapping = json.load(f)
+                    logger.debug(f"Загружен маппинг пользовательских полей: {len(mapping.get('fields', {}))} полей")
+                    return mapping
+            else:
+                logger.debug("Файл маппинга пользовательских полей не существует")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Ошибка загрузки маппинга пользовательских полей: {e}")
+            return {}
+
+    async def migrate_card_with_custom_fields(self, card: Union[KaitenCard, SimpleKaitenCard], 
+                                            target_group_id: int) -> Optional[int]:
+        """
+        Мигрирует карточку с применением пользовательских полей.
+        Расширенная версия migrate_card с поддержкой кастомных полей.
+        
+        Args:
+            card: Карточка Kaiten для миграции
+            target_group_id: ID группы назначения в Bitrix24
+            
+        Returns:
+            ID созданной задачи в Bitrix24 или None при ошибке
+        """
+        try:
+            # Сначала мигрируем карточку обычным способом
+            bitrix_task_id = await self.migrate_card(card, target_group_id)
+            
+            if not bitrix_task_id:
+                logger.error(f"Не удалось создать задачу для карточки {card.id}")
+                return None
+            
+            # Получаем пользовательские поля из карточки
+            kaiten_properties = await self.get_custom_properties_from_card(card)
+            
+            # Применяем пользовательские поля к созданной задаче
+            if kaiten_properties:
+                success = await self.apply_custom_fields_to_bitrix_task(bitrix_task_id, kaiten_properties)
+                if not success:
+                    logger.warning(f"Не удалось применить пользовательские поля к задаче {bitrix_task_id}")
+                    # Не возвращаем None, так как основная задача создана успешно
+            
+            logger.success(f"Карточка {card.id} мигрирована с пользовательскими полями -> задача {bitrix_task_id}")
+            return bitrix_task_id
+            
+        except Exception as e:
+            logger.error(f"Ошибка миграции карточки {card.id} с пользовательскими полями: {e}")
+            return None
+
+    async def migrate_card(self, card: Union[KaitenCard, SimpleKaitenCard], target_group_id: int) -> Optional[int]:
+        """
+        Простой метод миграции карточки без пользовательских полей.
+        Определяет стадию и создает задачу.
+        
+        Args:
+            card: Карточка Kaiten для миграции
+            target_group_id: ID группы назначения в Bitrix24
+            
+        Returns:
+            ID созданной задачи в Bitrix24 или None при ошибке
+        """
+        try:
+            # Определяем целевую стадию
+            target_stage = self.get_target_stage_for_card(card)
+            if not target_stage:
+                logger.debug(f"Карточка {card.id} отфильтрована (финальная колонка)")
+                return None
+            
+            # Создаем задачу используя существующую логику но с возвратом task_id
+            return await self._create_task_from_card(card, target_group_id, target_stage)
+            
+        except Exception as e:
+            logger.error(f"Ошибка миграции карточки {card.id}: {e}")
+            return None
+
+    async def _create_task_from_card(self, card: Union[KaitenCard, SimpleKaitenCard], 
+                                   target_group_id: int, target_stage: str) -> Optional[int]:
+        """
+        Создает задачу из карточки и возвращает ее ID.
+        Внутренний метод, извлеченный из migrate_single_card.
+        """
+        try:
+            # Получаем исходное описание
+            original_description = getattr(card, 'description', '') or ""
+            
+            # Получаем пользовательские поля (но НЕ добавляем их в описание)
+            custom_properties = await self.get_custom_properties_from_card(card)
+            
+            # Используем исходное описание БЕЗ пользовательских полей
+            enhanced_description = original_description
+            
+            # Трансформируем карточку в формат Bitrix24
+            if not self.card_transformer:
+                logger.error(f"❌ CardTransformer не инициализирован")
+                return None
+                
+            task_data = self.card_transformer.transform(card, str(target_group_id))
+            
+            if not task_data:
+                logger.error(f"❌ Карточка {card.id}: не удалось трансформировать")
+                return None
+            
+            # Добавляем стадию
+            stage_id = self.stage_mapping.get(target_stage)
+            if stage_id:
+                task_data['STAGE_ID'] = stage_id
+                logger.debug(f"Задача будет создана в стадии '{target_stage}' (ID: {stage_id})")
+            
+            # Создаем задачу в Bitrix24
+            task_id = await self.bitrix_client.create_task(
+                title=task_data['TITLE'],
+                description=task_data.get('DESCRIPTION', ''),
+                responsible_id=task_data['RESPONSIBLE_ID'],
+                group_id=target_group_id,
+                **{k: v for k, v in task_data.items() 
+                   if k not in ['TITLE', 'DESCRIPTION', 'RESPONSIBLE_ID', 'GROUP_ID']}
+            )
+            
+            if task_id:
+                logger.info(f"✅ Карточка {card.id} -> Задача {task_id}")
+                
+                # Добавляем в маппинг и сохраняем
+                self.card_mapping[str(card.id)] = str(task_id)
+                await self.save_card_mapping()
+                
+                # ✅ Применяем пользовательские поля к созданной задаче
+                if custom_properties:
+                    success = await self.apply_custom_fields_to_bitrix_task(task_id, custom_properties)
+                    if success:
+                        logger.info(f"✅ Применены пользовательские поля к задаче {task_id}")
+                    else:
+                        logger.warning(f"❌ Не удалось применить пользовательские поля к задаче {task_id}")
+                
+                # Обрабатываем файлы в описании
+                updated_description, migrated_files = await self.migrate_description_files(
+                    card.id, target_group_id, enhanced_description, task_id
+                )
+                
+                # Если описание изменилось, обновляем задачу
+                if updated_description != enhanced_description:
+                    await self.bitrix_client.update_task(
+                        task_id=task_id,
+                        DESCRIPTION=updated_description
+                    )
+                
+                # Мигрируем чек-листы и комментарии
+                await self.migrate_card_checklists(card.id, task_id, card.title)
+                await self.migrate_card_comments(card.id, task_id, card.title, target_group_id)
+                
+                return task_id
+            else:
+                logger.error(f"❌ Карточка {card.id}: не удалось создать задачу")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Ошибка создания задачи из карточки {card.id}: {e}")
+            return None

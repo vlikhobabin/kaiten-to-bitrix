@@ -16,6 +16,10 @@ class SimpleKaitenUser(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
     activated: Optional[bool] = None
+    # Поле type используется в members карточек для определения роли:
+    # type: 1 - обычный участник (соисполнитель)
+    # type: 2 - ответственный за задачу
+    type: Optional[int] = None
 
 
 class SimpleKaitenCardType(BaseModel):

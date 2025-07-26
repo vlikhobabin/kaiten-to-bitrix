@@ -93,7 +93,7 @@ class SpaceMigrator:
         
         try:
             # Подготавливаем команду
-            remote_script = "/root/update_group_features.py"
+            remote_script = "/root/kaiten-vps-scripts/update_group_features.py"
             
             if features:
                 features_str = ",".join(features)
@@ -564,19 +564,63 @@ class SpaceMigrator:
                     else:
                         logger.warning(f"Родительское пространство не найдено для {target_space.title}")
             else:
-                # Для остальных пространств - получаем всех пользователей с ролями (включая через группы)
-                logger.info(f"📍 Пространство {level}-го уровня '{target_space.title}' - берем всех пользователей с ролями (включая через группы)")
-                space_users = await self.kaiten_client.get_all_space_users_including_groups(space_id)
+                # Для остальных пространств - получаем только активных пользователей с ролями + группы доступа (БЕЗ всех участников)
+                logger.info(f"📍 Пространство {level}-го уровня '{target_space.title}' - берем только активных пользователей с ролями + группы доступа")
+                
+                all_users = {}  # Используем словарь для автоматического удаления дубликатов по ID
+                
+                # 1. Получаем активных пользователей с ролями (администраторы, редакторы)
+                users_with_roles = await self.kaiten_client.get_space_users_with_roles(space_id)
+                
+                for user in users_with_roles:
+                    user_id = user.get('id')
+                    if user_id:
+                        all_users[user_id] = {
+                            **user,
+                            'access_type': 'roles',
+                            'source': 'roles'
+                        }
+                
+                logger.info(f"📋 Найдено {len(users_with_roles)} активных пользователей с ролями")
+                
+                # 2. Получаем пользователей из групп доступа (правильная логика)
+                logger.info(f"🔍 Ищем пользователей пространства {space_id} через группы доступа...")
+                group_users = await self.kaiten_client.get_space_users_via_groups(space_id)
+                
+                if group_users:
+                    logger.info(f"📋 Найдено {len(group_users)} пользователей через группы доступа")
+                    
+                    for user in group_users:
+                        user_id = user.get('id')
+                        if user_id:
+                            # Если пользователь уже есть, обновляем информацию о доступе
+                            if user_id in all_users:
+                                all_users[user_id]['access_type'] = 'groups_and_direct'
+                                existing_groups = all_users[user_id].get('groups', [])
+                                new_group = user.get('group_name')
+                                if new_group and new_group not in existing_groups:
+                                    all_users[user_id]['groups'] = existing_groups + [new_group]
+                            else:
+                                # Новый пользователь только через группу
+                                all_users[user_id] = {
+                                    **user,
+                                    'access_type': 'groups',
+                                    'source': 'groups',
+                                    'groups': [user.get('group_name', 'Unknown Group')]
+                                }
+                else:
+                    logger.info("📋 Пользователи через группы доступа не найдены")
+                
+                # Возвращаем всех уникальных пользователей
+                space_users = list(all_users.values())
                 
                 # Подсчитываем пользователей по типу доступа
                 roles_count = len([u for u in space_users if u.get('access_type') == 'roles'])
-                members_count = len([u for u in space_users if u.get('access_type') == 'members'])
-                both_count = len([u for u in space_users if u.get('access_type') == 'both'])
                 groups_count = len([u for u in space_users if u.get('access_type') == 'groups'])
                 groups_and_direct_count = len([u for u in space_users if u.get('access_type') == 'groups_and_direct'])
                 
-                logger.info(f"👥 Всего пользователей: {len(space_users)}")
-                logger.info(f"   📊 По типу доступа: роли={roles_count}, участники={members_count}, оба={both_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
+                logger.info(f"👥 Всего активных пользователей: {len(space_users)}")
+                logger.info(f"   📊 По типу доступа: роли={roles_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
                 
                 for user in space_users:
                     kaiten_id = str(user['id'])
@@ -741,9 +785,18 @@ class SpaceMigrator:
                         group_id = str(groups_map[group_name]['ID'])
                         stats["updated"] += 1
                         
-                        # Изменяем владельца группы на правильного администратора
+                        # Проверяем нужно ли менять владельца группы
                         if owner_id:
-                            await self.bitrix_client.set_workgroup_owner(int(group_id), int(owner_id))
+                            # Получаем текущих участников группы с ролями
+                            current_roles = await self.bitrix_client.get_workgroup_users_with_roles(int(group_id))
+                            current_owners = current_roles.get('owner', [])
+                            
+                            # Проверяем нужно ли менять владельца
+                            if owner_id not in current_owners:
+                                logger.info(f"🔄 Смена владельца группы {group_id}: с {current_owners} на {owner_id}")
+                                await self.bitrix_client.set_workgroup_owner(int(group_id), int(owner_id))
+                            else:
+                                logger.info(f"✅ Владелец группы {group_id} уже корректный: {owner_id}")
                         
                         # Обновляем возможности группы до наших стандартов
                         logger.info(f"🎯 Обновляем возможности группы '{group_name}' до стандартного набора...")

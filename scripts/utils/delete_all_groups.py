@@ -36,7 +36,7 @@ async def delete_group(bitrix: BitrixClient, group_id: int) -> bool:
         logger.error(f"❌ Ошибка удаления группы {group_id}: {e}")
         return False
 
-async def delete_all_groups(excluded_ids: list = None, dry_run: bool = False):
+async def delete_all_groups(excluded_ids: list | None = None, dry_run: bool = False):
     """
     Удаление всех групп кроме исключенных
     

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     ssh_user: str = "root"
     ssh_key_path: str = ""
     ssh_key_path_putty: str = ""
-    vps_script_path: str = "/root/update_comment_dates.py"
+    vps_script_path: str = "/root/kaiten-vps-scripts/update_comment_dates.py"
 
     class Config:
         # Использует .env или env.txt (в зависимости от наличия)

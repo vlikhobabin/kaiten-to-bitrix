@@ -54,6 +54,10 @@ class KaitenUser(BaseModel):
     initials: Optional[str] = None
     avatar_type: Optional[int] = None
     ui_version: int = 2
+    # Поле type используется в members карточек для определения роли участника:
+    # type: 1 - обычный участник (соисполнитель)
+    # type: 2 - ответственный за задачу
+    type: Optional[int] = None
 
     @validator('email')
     def email_must_be_valid(cls, v):

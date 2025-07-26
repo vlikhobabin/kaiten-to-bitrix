@@ -1,5 +1,5 @@
 import httpx
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 
 from config.settings import settings
 from utils.logger import get_logger
@@ -73,6 +73,41 @@ class BitrixClient:
             try:
                 if method.upper() == 'POST':
                     response = await client.post(url, json=params)
+                else:
+                    response = await client.get(url, params=params)
+                
+                response.raise_for_status()
+                data = response.json()
+
+                if 'error' in data:
+                    logger.error(f"Ошибка API Bitrix24: {data.get('error_description', 'Неизвестная ошибка')}")
+                    return None
+                
+                return data.get('result')
+            
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Ошибка ответа API Bitrix24: {e.response.status_code} - {e.response.text}")
+                return None
+            except httpx.RequestError as e:
+                logger.error(f"Ошибка запроса к Bitrix24 API: {e}")
+                return None
+
+    async def _request_form(self, method: str, api_method: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Выполняет асинхронный HTTP-запрос к Bitrix24 API с передачей данных как form data.
+        Специально для пользовательских полей с массивами.
+        
+        :param method: HTTP метод ('GET', 'POST', etc.)
+        :param api_method: Метод Bitrix24 API
+        :param params: Параметры запроса
+        """
+        url = f"{self.webhook_url.rstrip('/')}/{api_method}"
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                if method.upper() == 'POST':
+                    # Отправляем данные как form data вместо JSON
+                    response = await client.post(url, data=params)
                 else:
                     response = await client.get(url, params=params)
                 
@@ -169,7 +204,7 @@ class BitrixClient:
                 return result
         return None
 
-    async def create_workgroup_with_features(self, group_data: Dict[str, Any], enabled_features: List[str] = None) -> Optional[str]:
+    async def create_workgroup_with_features(self, group_data: Dict[str, Any], enabled_features: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         """
         Создает рабочую группу с настройкой возможностей (фичей).
         
@@ -178,7 +213,7 @@ class BitrixClient:
             enabled_features: Список включенных возможностей ['tasks', 'files', 'calendar', 'chat', 'landing_knowledge']
             
         Returns:
-            ID созданной группы или None при ошибке
+            Словарь с данными созданной группы или None при ошибке
         """
         try:
             # Настройки возможностей по умолчанию (только нужные включены)
@@ -364,8 +399,12 @@ class BitrixClient:
         logger.info(f"Запрос пользователей для группы {group_id} из Bitrix24...")
         result = await self._request('GET', api_method, params)
         if result:
-            logger.success(f"Получено {len(result)} пользователей для группы {group_id}.")
-            return result
+            if isinstance(result, list):
+                logger.success(f"Получено {len(result)} пользователей для группы {group_id}.")
+                return result
+            else:
+                logger.warning(f"Неожиданный тип ответа для группы {group_id}: {type(result)}")
+                return []
         return []
 
     async def find_user_by_email(self, email: str) -> Optional[BitrixUser]:
@@ -376,8 +415,8 @@ class BitrixClient:
             })
             
             if response and isinstance(response, list) and response:
-                user_data = response[0]  # Берем первого найденного
-                return BitrixUser(**user_data)
+                user_data = response[0]  # type: ignore  # Берем первого найденного
+                return BitrixUser.model_validate(user_data)
             
             return None
             
@@ -391,12 +430,19 @@ class BitrixClient:
             response = await self._request('POST', 'user.add', user_data)
             
             if response:
-                # response уже является user_id
-                user_id = response
-                full_user = await self.get_user(user_id)
-                if full_user:
-                    logger.success(f"Создан пользователь {user_data.get('EMAIL')} (ID: {user_id})")
-                    return full_user
+                # response может быть ID (число) или объектом
+                if isinstance(response, (int, str)):
+                    user_id = int(response)
+                    full_user = await self.get_user(user_id)
+                    if full_user:
+                        logger.success(f"Создан пользователь {user_data.get('EMAIL')} (ID: {user_id})")
+                        return full_user
+                elif isinstance(response, dict) and 'ID' in response:
+                    user_id = int(response['ID'])
+                    full_user = await self.get_user(user_id)
+                    if full_user:
+                        logger.success(f"Создан пользователь {user_data.get('EMAIL')} (ID: {user_id})")
+                        return full_user
             
             logger.error(f"Ошибка создания пользователя {user_data.get('EMAIL', 'unknown')}")
             return None
@@ -406,28 +452,30 @@ class BitrixClient:
             
             # Если пользователь уже существует, попытаемся найти его
             if "уже существует" in error_msg or "already exists" in error_msg.lower():
-                existing_user = await self.find_user_by_email(user_data.get('EMAIL'))
-                if existing_user:
-                    logger.info(f"Найден существующий пользователь {existing_user.EMAIL} (ID: {existing_user.ID})")
-                    return existing_user
-                else:
-                    logger.error(f"Не удалось найти пользователя {user_data.get('EMAIL')}")
+                email = user_data.get('EMAIL')
+                if email:
+                    existing_user = await self.find_user_by_email(email)
+                    if existing_user:
+                        logger.info(f"Найден существующий пользователь {existing_user.EMAIL} (ID: {existing_user.ID})")
+                        return existing_user
+                    else:
+                        logger.error(f"Не удалось найти пользователя {email}")
             else:
                 logger.error(f"Ошибка создания пользователя {user_data.get('EMAIL', 'unknown')}: {e}")
             
             return None
 
-    async def update_user(self, user_id: str, user_data: dict) -> Optional[BitrixUser]:
+    async def update_user(self, user_id: Union[str, int], user_data: dict) -> Optional[BitrixUser]:
         """Обновить данные пользователя в Bitrix24"""
         try:
             # Добавляем ID пользователя к данным для обновления
-            update_data = {'ID': user_id, **user_data}
+            update_data = {'ID': str(user_id), **user_data}
             
             response = await self._request('POST', 'user.update', update_data)
             
             if response is True:
                 # Получаем обновленную информацию о пользователе
-                updated_user = await self.get_user(user_id)
+                updated_user = await self.get_user(int(user_id))
                 if updated_user:
                     return updated_user
             
@@ -438,7 +486,7 @@ class BitrixClient:
             logger.error(f"Ошибка обновления пользователя ID {user_id}: {e}")
             return None
 
-    async def get_users(self, params: Optional[dict] = None) -> list[BitrixUser]:
+    async def get_users(self, params: Optional[dict] = None) -> List[BitrixUser]:
         """
         Получает список всех пользователей из Bitrix24 с поддержкой пагинации.
 
@@ -507,8 +555,8 @@ class BitrixClient:
             response = await self._request('GET', 'user.get', {'ID': user_id})
             
             if response and isinstance(response, list) and response:
-                user_data = response[0]
-                return BitrixUser(**user_data)
+                user_data = response[0]  # type: ignore
+                return BitrixUser.model_validate(user_data)
             
             return None
             
@@ -518,27 +566,33 @@ class BitrixClient:
 
     # ========== МЕТОДЫ ДЛЯ РАБОТЫ С СТАДИЯМИ ЗАДАЧ ==========
     
-    async def get_task_stages(self, entity_id: int) -> List[Dict[str, Any]]:
+    async def get_task_stages(self, entity_id: int) -> Dict[str, Dict[str, Any]]:
         """
         Получает список стадий канбана для группы.
         
         :param entity_id: ID группы (рабочей группы)
-        :return: Список стадий
+        :return: Словарь стадий в формате {stage_id: stage_data}
         """
         api_method = 'task.stages.get'
         params = {
             'entityId': entity_id,
             'isAdmin': True  # Запрашиваем с правами администратора
         }
-        logger.info(f"Запрос стадий канбана для группы {entity_id}...")
+        logger.debug(f"Запрос стадий канбана для группы {entity_id}...")
         result = await self._request('GET', api_method, params)
+        
         if result:
-            logger.success(f"Получено {len(result)} стадий для группы {entity_id}.")
-            return result
-        return []
+            # API возвращает словарь стадий в формате {"stage_id": {stage_data}}
+            if isinstance(result, dict):
+                logger.debug(f"Получено {len(result)} стадий для группы {entity_id}.")
+                return result
+            else:
+                logger.warning(f"Неожиданный тип ответа для стадий группы {entity_id}: {type(result)}")
+                return {}
+        return {}
 
     async def create_task_stage(self, entity_id: int, title: str, sort: int = 100, 
-                               color: str = "0066CC") -> Optional[Dict[str, Any]]:
+                            color: str = "0066CC") -> Optional[Dict[str, Any]]:
         """
         Создает новую стадию канбана для группы.
         
@@ -631,15 +685,24 @@ class BitrixClient:
         logger.debug(f"Создание группы чек-листа '{title}' для задачи {task_id}...")
         result = await self._request('POST', api_method, params)
         if result:
-            group_id = result
-            logger.debug(f"Группа чек-листа '{title}' создана с ID {group_id}")
-            return group_id
+            # result может быть числом или объектом
+            if isinstance(result, (int, str)):
+                group_id = int(result)
+                logger.debug(f"Группа чек-листа '{title}' создана с ID {group_id}")
+                return group_id
+            elif isinstance(result, dict) and 'ID' in result:
+                group_id = int(result['ID'])
+                logger.debug(f"Группа чек-листа '{title}' создана с ID {group_id}")
+                return group_id
+            else:
+                logger.warning(f"Неожиданный ответ при создании группы чек-листа: {result}")
+                return None
         else:
             logger.warning(f"Не удалось создать группу чек-листа '{title}' для задачи {task_id}")
             return None
 
     async def add_checklist_item(self, task_id: int, title: str, is_complete: bool = False, 
-                                parent_id: int = None) -> Optional[int]:
+                                parent_id: Optional[int] = None) -> Optional[int]:
         """
         Добавляет элемент в чек-лист задачи.
         
@@ -665,9 +728,18 @@ class BitrixClient:
         logger.debug(f"Добавление элемента '{title}' в чек-лист задачи {task_id}...")
         result = await self._request('POST', api_method, params)
         if result:
-            item_id = result
-            logger.debug(f"Элемент чек-листа '{title}' создан с ID {item_id}")
-            return item_id
+            # result может быть числом или объектом
+            if isinstance(result, (int, str)):
+                item_id = int(result)
+                logger.debug(f"Элемент чек-листа '{title}' создан с ID {item_id}")
+                return item_id
+            elif isinstance(result, dict) and 'ID' in result:
+                item_id = int(result['ID'])
+                logger.debug(f"Элемент чек-листа '{title}' создан с ID {item_id}")
+                return item_id
+            else:
+                logger.warning(f"Неожиданный ответ при создании элемента чек-листа: {result}")
+                return None
         else:
             logger.warning(f"Не удалось создать элемент чек-листа '{title}' для задачи {task_id}")
             return None
@@ -684,8 +756,12 @@ class BitrixClient:
         logger.debug(f"Запрос чек-листов для задачи {task_id}...")
         result = await self._request('GET', api_method, params)
         if result:
-            logger.debug(f"Получено {len(result)} элементов чек-листов для задачи {task_id}")
-            return result
+            if isinstance(result, list):
+                logger.debug(f"Получено {len(result)} элементов чек-листов для задачи {task_id}")
+                return result
+            else:
+                logger.warning(f"Неожиданный тип ответа для чек-листов задачи {task_id}: {type(result)}")
+                return []
         return []
 
     async def delete_checklist_item(self, item_id: int) -> bool:
@@ -765,7 +841,7 @@ class BitrixClient:
 
     # ========== МЕТОДЫ ДЛЯ РАБОТЫ С КОММЕНТАРИЯМИ ЗАДАЧ ==========
     
-    async def add_task_comment(self, task_id: int, text: str, author_id: int, created_date: str = None) -> Optional[int]:
+    async def add_task_comment(self, task_id: int, text: str, author_id: int, created_date: Optional[str] = None) -> Optional[int]:
         """
         Добавляет комментарий к задаче.
         
@@ -791,9 +867,18 @@ class BitrixClient:
         logger.debug(f"Добавление комментария к задаче {task_id} от пользователя {author_id}...")
         result = await self._request('POST', api_method, params)
         if result:
-            comment_id = result
-            logger.debug(f"Комментарий добавлен с ID {comment_id}")
-            return comment_id
+            # result может быть числом или объектом
+            if isinstance(result, (int, str)):
+                comment_id = int(result)
+                logger.debug(f"Комментарий добавлен с ID {comment_id}")
+                return comment_id
+            elif isinstance(result, dict) and 'ID' in result:
+                comment_id = int(result['ID'])
+                logger.debug(f"Комментарий добавлен с ID {comment_id}")
+                return comment_id
+            else:
+                logger.warning(f"Неожиданный ответ при создании комментария: {result}")
+                return None
         else:
             logger.warning(f"Не удалось добавить комментарий к задаче {task_id}")
             return None
@@ -810,8 +895,12 @@ class BitrixClient:
         logger.debug(f"Запрос комментариев для задачи {task_id}...")
         result = await self._request('GET', api_method, params)
         if result:
-            logger.debug(f"Получено {len(result)} комментариев для задачи {task_id}")
-            return result
+            if isinstance(result, list):
+                logger.debug(f"Получено {len(result)} комментариев для задачи {task_id}")
+                return result
+            else:
+                logger.warning(f"Неожиданный тип ответа для комментариев задачи {task_id}: {type(result)}")
+                return []
         return []
 
     # ========== МЕТОДЫ ДЛЯ РАБОТЫ С ФАЙЛАМИ ==========
@@ -837,23 +926,29 @@ class BitrixClient:
                 logger.error("❌ Не удалось получить список хранилищ")
                 return None
             
+            # Убеждаемся что storages - это список
+            if not isinstance(storages, list):
+                logger.error(f"❌ Неожиданный тип списка хранилищ: {type(storages)}")
+                return None
+            
             # Ищем хранилище группы (ENTITY_TYPE = 'group')
             group_storage = None
             for storage in storages:
-                if (storage.get('ENTITY_TYPE') == 'group' and
-                    int(storage.get('ENTITY_ID', 0)) == group_id):
-                    group_storage = storage
-                    break
+                if isinstance(storage, dict):
+                    if (storage.get('ENTITY_TYPE') == 'group' and
+                        int(storage.get('ENTITY_ID', 0)) == group_id):
+                        group_storage = storage
+                        break
             
             if not group_storage:
                 logger.error(f"❌ Хранилище для группы {group_id} не найдено")
                 # Выводим доступные хранилища групп для отладки
-                group_storages = [s for s in storages if s.get('ENTITY_TYPE') == 'group']
+                group_storages = [s for s in storages if isinstance(s, dict) and s.get('ENTITY_TYPE') == 'group']
                 if group_storages:
                     logger.debug(f"Доступные хранилища групп: {[(s.get('ENTITY_ID'), s.get('NAME')) for s in group_storages[:5]]}")
                 return None
             
-            storage_id = int(group_storage['ID'])
+            storage_id = int(group_storage['ID'])  # type: ignore
             storage_name = group_storage.get('NAME', 'unknown')
             
             # Сохраняем в кэш
@@ -882,6 +977,11 @@ class BitrixClient:
             
             if not folder_children:
                 logger.debug(f"Папка {folder_id} пуста или недоступна")
+                return None
+            
+            # Убеждаемся что folder_children - это список
+            if not isinstance(folder_children, list):
+                logger.warning(f"Неожиданный тип содержимого папки {folder_id}: {type(folder_children)}")
                 return None
             
             # Ищем файл по имени (точное совпадение или с timestamp)
@@ -970,9 +1070,9 @@ class BitrixClient:
             storage_children = await self._request('GET', 'disk.folder.getchildren', {'id': root_object_id})
             
             # Ищем существующую папку
-            if storage_children:
+            if storage_children and isinstance(storage_children, list):
                 for item in storage_children:
-                    if (item.get('TYPE') == 'folder' and 
+                    if isinstance(item, dict) and (item.get('TYPE') == 'folder' and 
                         item.get('NAME') == folder_name):
                         folder_id = item.get('ID')
                         logger.debug(f"✅ Найдена существующая папка '{folder_name}' с ID: {folder_id}")
@@ -1029,9 +1129,9 @@ class BitrixClient:
             kaiten_folder_children = await self._request('GET', 'disk.folder.getchildren', {'id': kaiten_folder_id})
             
             # Ищем существующую папку задачи
-            if kaiten_folder_children:
+            if kaiten_folder_children and isinstance(kaiten_folder_children, list):
                 for item in kaiten_folder_children:
-                    if (item.get('TYPE') == 'folder' and 
+                    if isinstance(item, dict) and (item.get('TYPE') == 'folder' and 
                         item.get('NAME') == task_folder_name):
                         task_folder_id = item.get('ID')
                         logger.debug(f"✅ Найдена папка задачи {task_id} с ID: {task_folder_id}")
@@ -1060,7 +1160,7 @@ class BitrixClient:
             logger.error(f"❌ Ошибка при работе с папкой задачи {task_id}: {e}")
             return None
 
-    async def upload_file(self, file_content: bytes, filename: str, group_id: int, task_id: int = None) -> Optional[str]:
+    async def upload_file(self, file_content: bytes, filename: str, group_id: int, task_id: Optional[int] = None) -> Optional[str]:
         """
         Загружает файл в Bitrix24 через disk.folder.uploadfile в служебную папку группы.
         Если файл уже существует, возвращает ID существующего файла.
@@ -1157,7 +1257,7 @@ class BitrixClient:
             return None
 
     async def add_task_comment_with_file(self, task_id: int, text: str, author_id: int, 
-                                       file_id: str = None, created_date: str = None) -> Optional[int]:
+                                       file_id: Optional[str] = None, created_date: Optional[str] = None) -> Optional[int]:
         """
         Добавляет комментарий к задаче с прикрепленным файлом.
         
@@ -1192,16 +1292,18 @@ class BitrixClient:
         
         if result:
             # API может вернуть как число, так и объект
-            if isinstance(result, int):
-                comment_id = result
+            if isinstance(result, (int, str)):
+                comment_id = int(result)
             elif isinstance(result, dict) and 'result' in result:
-                comment_id = result['result']
+                comment_id = int(result['result'])
             else:
-                comment_id = result
+                # Неожиданный тип ответа
+                logger.warning(f"⚠️ Неожиданный ответ при создании комментария: {result}")
+                return None
             
             if comment_id:
                 logger.debug(f"✅ Комментарий создан с ID: {comment_id}")
-                return int(comment_id)
+                return comment_id
             else:
                 logger.warning(f"⚠️ Неожиданный ответ при создании комментария: {result}")
                 return None
@@ -1315,16 +1417,17 @@ class BitrixClient:
         
         if result and isinstance(result, list):
             for user in result:
-                user_id = user.get('USER_ID')
-                role = user.get('ROLE', 'K')  # По умолчанию обычный участник
-                
-                if user_id:
-                    if role == 'A':
-                        roles['owner'].append(str(user_id))
-                    elif role == 'M':
-                        roles['moderators'].append(str(user_id))
-                    else:  # K или любая другая роль
-                        roles['members'].append(str(user_id))
+                if isinstance(user, dict):
+                    user_id = user.get('USER_ID')
+                    role = user.get('ROLE', 'K')  # По умолчанию обычный участник
+                    
+                    if user_id:
+                        if role == 'A':
+                            roles['owner'].append(str(user_id))
+                        elif role == 'M':
+                            roles['moderators'].append(str(user_id))
+                        else:  # K или любая другая роль
+                            roles['members'].append(str(user_id))
             
             logger.success(f"Получены участники группы {group_id}: владельцев={len(roles['owner'])}, помощников={len(roles['moderators'])}, участников={len(roles['members'])}")
         else:
@@ -1410,14 +1513,14 @@ class BitrixClient:
             Словарь с подробной информацией о группе или None при ошибке
         """
         try:
-            method = "sonet_group.get"
+            api_method = "sonet_group.get"
             params = {
                 "ID": group_id
             }
             
             logger.info(f"Запрос подробной информации о группе {group_id} из Bitrix24...")
             
-            response = await self._request(method, params)
+            response = await self._request('GET', api_method, params)
             
             if response and 'result' in response:
                 group_info = response['result']
@@ -1441,6 +1544,190 @@ class BitrixClient:
                 
         except Exception as e:
             logger.error(f"Ошибка получения информации о группе {group_id}: {e}")
+            return None
+
+    async def get_task_custom_fields(self, task_id: int) -> Dict[str, Any]:
+        """
+        Получает пользовательские поля задачи через task.item.getdata.
+        
+        Args:
+            task_id: ID задачи в Bitrix24
+            
+        Returns:
+            Словарь с пользовательскими полями или пустой словарь
+        """
+        try:
+            result = await self._request('POST', 'task.item.getdata', {'id': task_id})
+            
+            if result:
+                # Фильтруем только UF_ поля
+                custom_fields = {}
+                for key, value in result.items():
+                    if key.startswith('UF_') and value not in [False, None]:
+                        custom_fields[key] = value
+                return custom_fields
+            else:
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения пользовательских полей задачи {task_id}: {e}")
+            return {}
+
+    async def set_task_custom_field(self, task_id: int, field_name: str, value: Any) -> bool:
+        """
+        Устанавливает значение пользовательского поля для задачи.
+        ИСПРАВЛЕНО: Использует правильный формат для списочных полей Bitrix24.
+        
+        Args:
+            task_id: ID задачи в Bitrix24
+            field_name: Имя пользовательского поля (например, UF_KAITEN_PROJECT_365518)
+            value: Значение поля (может быть строкой, числом, списком для множественных полей)
+            
+        Returns:
+            True в случае успеха
+        """
+        try:
+            # Получаем текущие значения поля
+            current_fields = await self.get_task_custom_fields(task_id)
+            current_value = current_fields.get(field_name, [])
+            
+            # Определяем новые значения
+            if isinstance(value, list):
+                new_values = value
+            else:
+                # Для одиночного значения проверяем, не добавлено ли оно уже
+                if isinstance(current_value, list):
+                    if value not in current_value:
+                        new_values = current_value + [value]
+                    else:
+                        logger.debug(f"Значение {value} уже присутствует в поле {field_name}")
+                        return True
+                else:
+                    new_values = [value] if not current_value else [current_value, value]
+            
+            # Формируем параметры для обновления задачи в правильном формате для массивов
+            params = {'taskId': task_id}
+            
+            # Добавляем значения в формате fields[field_name][index] = value
+            for i, val in enumerate(new_values):
+                params[f'fields[{field_name}][{i}]'] = val
+            
+            # Для пользовательских полей используем специальный запрос без JSON
+            result = await self._request_form('POST', 'tasks.task.update', params)
+            
+            if result is not None:
+                logger.debug(f"Установлено значение поля {field_name} для задачи {task_id}: {new_values}")
+                return True
+            else:
+                logger.warning(f"Не удалось установить поле {field_name} для задачи {task_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Ошибка установки поля {field_name} для задачи {task_id}: {e}")
+            return False
+
+    async def set_task_custom_fields(self, task_id: int, fields_data: Dict[str, Any]) -> bool:
+        """
+        Устанавливает несколько пользовательских полей для задачи одним запросом.
+        ИСПРАВЛЕНО: Использует правильный формат для списочных полей Bitrix24.
+        
+        Args:
+            task_id: ID задачи в Bitrix24
+            fields_data: Словарь с данными полей {field_name: value}
+            
+        Returns:
+            True в случае успеха
+        """
+        try:
+            if not fields_data:
+                return True
+            
+            # Получаем текущие значения всех полей
+            current_fields = await self.get_task_custom_fields(task_id)
+            
+            # Формируем параметры для обновления задачи в правильном формате для массивов
+            params = {'taskId': task_id}
+            
+            for field_name, value in fields_data.items():
+                current_value = current_fields.get(field_name, [])
+                
+                # Определяем новые значения для каждого поля
+                if isinstance(value, list):
+                    new_values = value
+                else:
+                    # Для одиночного значения проверяем, не добавлено ли оно уже
+                    if isinstance(current_value, list):
+                        if value not in current_value:
+                            new_values = current_value + [value]
+                        else:
+                            logger.debug(f"Значение {value} уже присутствует в поле {field_name}")
+                            new_values = current_value  # Оставляем как есть
+                    else:
+                        new_values = [value] if not current_value else [current_value, value]
+                
+                # Добавляем значения в формате fields[field_name][index] = value
+                for i, val in enumerate(new_values):
+                    params[f'fields[{field_name}][{i}]'] = val
+            
+            # Для пользовательских полей используем специальный запрос без JSON
+            result = await self._request_form('POST', 'tasks.task.update', params)
+            
+            if result is not None:
+                logger.debug(f"Установлены пользовательские поля для задачи {task_id}: {list(fields_data.keys())}")
+                return True
+            else:
+                logger.warning(f"Не удалось установить поля для задачи {task_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Ошибка установки полей для задачи {task_id}: {e}")
+            return False
+
+    async def get_user_fields_for_tasks(self) -> List[Dict[str, Any]]:
+        """
+        Получает список всех пользовательских полей для задач.
+        
+        Returns:
+            Список пользовательских полей для сущности TASKS_TASK
+        """
+        try:
+            # Получаем все пользовательские поля
+            result = await self._request('GET', 'task.item.userfield.getlist')
+            
+            if result and isinstance(result, list):
+                logger.debug(f"Получено {len(result)} пользовательских полей для задач")
+                return result
+            else:
+                logger.warning("Не удалось получить пользовательские поля для задач")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения пользовательских полей: {e}")
+            return []
+
+    async def find_user_field_by_xml_id(self, xml_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Ищет пользовательское поле по XML_ID.
+        
+        Args:
+            xml_id: XML_ID поля (ID из Kaiten)
+            
+        Returns:
+            Информация о поле или None
+        """
+        try:
+            fields = await self.get_user_fields_for_tasks()
+            
+            for field in fields:
+                if field.get('XML_ID') == xml_id:
+                    logger.debug(f"Найдено поле по XML_ID {xml_id}: {field.get('FIELD_NAME')}")
+                    return field
+            
+            logger.debug(f"Поле с XML_ID {xml_id} не найдено")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка поиска поля по XML_ID {xml_id}: {e}")
             return None
 
 

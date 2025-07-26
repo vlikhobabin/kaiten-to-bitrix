@@ -27,32 +27,54 @@ class CardTransformer(BaseTransformer):
         logger.debug(f"Трансформация карточки '{card.title}' (ID: {card.id}) для Bitrix24...")
 
         # Определяем постановщика (заказчика) - это владелец карточки
+        if not card.owner:
+            logger.error(f"У карточки '{card.title}' (ID: {card.id}) нет владельца. Пропуск карточки.")
+            return None
+            
         created_by_id = self.user_transformer.get_user_id(card.owner)
         if not created_by_id:
-            logger.error(f"Не удалось найти постановщика для карточки '{card.title}' (Kaiten owner: {card.owner.full_name}). Пропуск карточки.")
+            owner_name = getattr(card.owner, 'full_name', 'Unknown') if card.owner else 'Unknown'
+            logger.error(f"Не удалось найти постановщика для карточки '{card.title}' (Kaiten owner: {owner_name}). Пропуск карточки.")
             return None
         
-        # Определяем ответственного - это первый участник карточки
+        # Определяем ответственного и соисполнителей по полю type в members
         responsible_id = None
         accomplices = []
         
         if card.members and len(card.members) > 0:
-            # Первый участник становится ответственным
-            responsible_user = card.members[0]
-            responsible_id = self.user_transformer.get_user_id(responsible_user)
+            logger.debug(f"Обрабатываем {len(card.members)} участников карточки '{card.title}':")
             
-            if not responsible_id:
-                logger.error(f"Не удалось найти ответственного для карточки '{card.title}' (первый участник: {responsible_user.full_name}). Пропуск карточки.")
-                return None
-            
-            # Остальные участники становятся соисполнителями
-            if len(card.members) > 1:
-                for member in card.members[1:]:
-                    accomplice_id = self.user_transformer.get_user_id(member)
-                    if accomplice_id:
-                        accomplices.append(accomplice_id)
+            for member in card.members:
+                member_type = getattr(member, 'type', None)
+                member_name = getattr(member, 'full_name', 'Unknown')
+                member_id = self.user_transformer.get_user_id(member)
+                
+                if not member_id:
+                    logger.warning(f"Не удалось найти пользователя '{member_name}' в маппинге для карточки '{card.title}'")
+                    continue
+                
+                logger.debug(f"  - {member_name} (type: {member_type})")
+                
+                if member_type == 2:
+                    # Ответственный (type: 2)
+                    if responsible_id:
+                        logger.warning(f"Найдено несколько ответственных для карточки '{card.title}'. Используем первого: {member_name}")
                     else:
-                        logger.warning(f"Не удалось найти соисполнителя '{member.full_name}' для карточки '{card.title}'")
+                        responsible_id = member_id
+                        logger.debug(f"Ответственный: {member_name}")
+                elif member_type == 1:
+                    # Соисполнитель (type: 1)
+                    accomplices.append(member_id)
+                    logger.debug(f"Соисполнитель: {member_name}")
+                else:
+                    # Неизвестный type или None - добавляем как соисполнителя
+                    accomplices.append(member_id)
+                    logger.debug(f"Участник с неизвестным type ({member_type}), добавлен как соисполнитель: {member_name}")
+            
+            # Если не нашли ответственного среди участников, назначаем владельца
+            if not responsible_id:
+                responsible_id = created_by_id
+                logger.warning(f"Не найден ответственный (type: 2) среди участников карточки '{card.title}', ответственным назначен владелец")
         else:
             # Если участников нет, ответственным назначаем владельца карточки
             responsible_id = created_by_id
@@ -61,7 +83,7 @@ class CardTransformer(BaseTransformer):
         # Получаем описание карточки
         description = getattr(card, 'description', '') or " "
         
-        # Формируем теги: добавляем название доски к существующим тегам
+        # Формируем теги: добавляем название доски и колонки к существующим тегам
         tags = []
         
         # Добавляем существующие теги из карточки
@@ -77,13 +99,21 @@ class CardTransformer(BaseTransformer):
         else:
             logger.warning(f"Не удалось получить название доски для карточки '{card.title}'")
         
+        # Добавляем название колонки как тег
+        column_name = self._get_column_title(card)
+        if column_name:
+            tags.append(column_name)
+            logger.debug(f"Добавлен тег с названием колонки: '{column_name}'")
+        else:
+            logger.warning(f"Не удалось получить название колонки для карточки '{card.title}'")
+        
         transformed_data = {
             "TITLE": card.title,
             "DESCRIPTION": description,
             "CREATED_BY": created_by_id,  # Постановщик - владелец карточки
-            "RESPONSIBLE_ID": responsible_id,  # Исполнитель - первый участник
+            "RESPONSIBLE_ID": responsible_id,  # Исполнитель - участник с type: 2
             "GROUP_ID": bitrix_group_id,
-            # Преобразование тегов: существующие теги + название доски
+            # Преобразование тегов: существующие теги + название доски + название колонки
             "TAGS": tags,
             # Установка крайнего срока, если он есть
             "DEADLINE": card.due_date.isoformat() if card.due_date else None,
@@ -104,26 +134,56 @@ class CardTransformer(BaseTransformer):
 
     def _get_board_title(self, card: Union[KaitenCard, SimpleKaitenCard]) -> Optional[str]:
         """
-        Получает название доски для карточки.
+        Получает название доски для карточки из объекта board в самой карточке.
         
         :param card: Карточка Kaiten
         :return: Название доски или None
         """
         try:
-            # Проверяем различные способы получения названия доски
+            # Проверяем различные способы получения названия доски из объекта карточки
             if hasattr(card, 'board') and card.board:
                 if hasattr(card.board, 'title') and card.board.title:
+                    logger.debug(f"Получено название доски из card.board.title: '{card.board.title}'")
                     return card.board.title
-                elif hasattr(card.board, 'name') and card.board.name:
-                    return card.board.name
             
             # Для случаев когда board может быть словарем
             if hasattr(card, 'board') and isinstance(card.board, dict):
-                return card.board.get('title') or card.board.get('name')
+                title = card.board.get('title') or card.board.get('name')
+                if title:
+                    logger.debug(f"Получено название доски из словаря card.board: '{title}'")
+                    return title
             
-            logger.debug(f"Доска не найдена для карточки {card.id}")
+            logger.debug(f"Название доски не найдено в объекте карточки {card.id}")
             return None
             
         except Exception as e:
             logger.warning(f"Ошибка получения названия доски для карточки {card.id}: {e}")
+            return None
+
+    def _get_column_title(self, card: Union[KaitenCard, SimpleKaitenCard]) -> Optional[str]:
+        """
+        Получает название колонки для карточки из объекта column в самой карточке.
+        
+        :param card: Карточка Kaiten
+        :return: Название колонки или None
+        """
+        try:
+            # Проверяем различные способы получения названия колонки из объекта карточки
+            if hasattr(card, 'column') and card.column:
+                if hasattr(card.column, 'title') and card.column.title:
+                    logger.debug(f"Получено название колонки из card.column.title: '{card.column.title}'")
+                    return card.column.title
+            
+            # Для случаев когда column может быть словарем
+            if hasattr(card, 'column') and isinstance(card.column, dict):
+                title = card.column.get('title') or card.column.get('name')
+                if title:
+                    logger.debug(f"Получено название колонки из словаря card.column: '{title}'")
+                    return title
+            
+            logger.debug(f"Название колонки не найдено в объекте карточки {card.id}")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Ошибка получения названия колонки для карточки {card.id}: {e}")
             return None
