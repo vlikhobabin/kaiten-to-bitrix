@@ -2,7 +2,4 @@ httpx
 pydantic
 pydantic-settings
 python-dotenv
-loguru
-pytest
-pytest-mock
-pytest-asyncio 
+loguru 
