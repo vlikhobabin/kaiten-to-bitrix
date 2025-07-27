@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from connectors.kaiten_client import KaitenClient
 from connectors.bitrix_client import BitrixClient
 from models.kaiten_models import KaitenSpace
-from config.space_exclusions import is_space_excluded, get_excluded_spaces
+from config.settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -183,14 +183,6 @@ class SpaceMigrator:
             logger.error(f"Ошибка построения иерархии пространств: {e}")
             return False
 
-    def get_root_spaces(self) -> List[KaitenSpace]:
-        """Получает корневые пространства (без родителей)"""
-        root_spaces = []
-        for space in self.spaces_hierarchy.values():
-            if not space.parent_entity_uid:
-                root_spaces.append(space)
-        return root_spaces
-
     def get_child_spaces(self, parent_space: KaitenSpace) -> List[KaitenSpace]:
         """Получает дочерние пространства для указанного родителя"""
         child_spaces = []
@@ -210,7 +202,7 @@ class SpaceMigrator:
         
         while current_space and depth < max_depth:
             # Проверяем текущее пространство
-            if is_space_excluded(current_space.title):
+            if settings.is_space_excluded(current_space.title):
                 return True
             
             # Идем к родителю
@@ -270,58 +262,6 @@ class SpaceMigrator:
             logger.warning(f"Пространство '{space.title}' уровня {level} не должно мигрироваться")
         
         return None
-
-    async def get_space_administrators_bitrix_ids(self, space: KaitenSpace) -> Tuple[Optional[str], List[str]]:
-        """
-        Получает ID администраторов пространства в формате Bitrix24.
-        
-        Args:
-            space: Пространство для получения администраторов
-            
-        Returns:
-            Кортеж (owner_id, moderator_ids):
-            - owner_id: ID первого администратора (руководитель группы) или None
-            - moderator_ids: Список ID остальных администраторов (помощники руководителя)
-        """
-        try:
-            # Определяем пространство-источник администраторов
-            admin_source_space = self.determine_admin_source_space(space)
-            if not admin_source_space:
-                logger.debug(f"Не удалось определить источник администраторов для пространства '{space.title}'")
-                return None, []
-            
-            # Получаем администраторов пространства
-            administrators = await self.kaiten_client.get_space_administrators(admin_source_space.id)
-            
-            if not administrators:
-                logger.debug(f"Администраторы не найдены в пространстве '{admin_source_space.title}'")
-                return None, []
-            
-            # Преобразуем в ID Bitrix24
-            admin_bitrix_ids = []
-            for admin in administrators:
-                kaiten_id = str(admin['id'])
-                bitrix_id = self.user_mapping.get(kaiten_id)
-                
-                if bitrix_id:
-                    admin_bitrix_ids.append(bitrix_id)
-                    logger.debug(f"Администратор {admin['full_name']} (Kaiten: {kaiten_id}) -> Bitrix: {bitrix_id}")
-                else:
-                    logger.debug(f"Администратор {admin['full_name']} (Kaiten: {kaiten_id}) не найден в маппинге пользователей")
-            
-            if admin_bitrix_ids:
-                owner_id = admin_bitrix_ids[0]  # Первый администратор = руководитель
-                moderator_ids = admin_bitrix_ids[1:]  # Остальные = помощники
-                
-                logger.debug(f"Для пространства '{space.title}' из '{admin_source_space.title}': руководитель={owner_id}, помощников={len(moderator_ids)}")
-                return owner_id, moderator_ids
-            else:
-                logger.debug(f"Ни один администратор пространства '{admin_source_space.title}' не найден в маппинге пользователей")
-                return None, []
-                
-        except Exception as e:
-            logger.error(f"Ошибка получения администраторов для пространства '{space.title}': {e}")
-            return None, []
 
     async def get_space_roles_bitrix_ids(self, space: KaitenSpace) -> Tuple[Optional[str], List[str]]:
         """
@@ -413,7 +353,7 @@ class SpaceMigrator:
         spaces_to_migrate = []
         
         logger.debug("Анализ пространств для миграции...")
-        logger.debug(f"Исключенные пространства: {get_excluded_spaces()}")
+        logger.debug(f"Исключенные пространства: {settings.get_excluded_spaces()}")
         
         for space in self.spaces_hierarchy.values():
             # Пропускаем пространства из исключенного дерева
@@ -1028,7 +968,7 @@ class SpaceMigrator:
             "created_at": datetime.now().isoformat(),
             "description": "Маппинг ID пространств Kaiten -> рабочих групп Bitrix24",
             "migration_logic": "Переносим пространства, НЕ доски. Конечные пространства или 2-й уровень.",
-            "excluded_spaces": get_excluded_spaces(),
+            "excluded_spaces": settings.get_excluded_spaces(),
             "stats": combined_stats,
             "mapping": combined_mapping
         }

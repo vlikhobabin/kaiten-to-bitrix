@@ -1241,80 +1241,6 @@ class CardMigrator:
             
         return properties
 
-    async def get_field_name_from_api(self, field_id: str) -> str:
-        """
-        Получает название поля через API Kaiten.
-        
-        Args:
-            field_id: ID поля (например, "365518")
-            
-        Returns:
-            Название поля или исходный ID если не найдено
-        """
-        try:
-            # Убираем префикс id_ если есть
-            clean_field_id = field_id.replace('id_', '') if field_id.startswith('id_') else field_id
-            
-            # Получаем информацию о поле через API
-            property_info = await self.kaiten_client.get_custom_property(int(clean_field_id))
-            if property_info and 'name' in property_info:
-                logger.debug(f"Получено название поля {clean_field_id} через API: {property_info['name']}")
-                return property_info['name']
-            
-            # Если поле не найдено, возвращаем исходный ID
-            logger.debug(f"Поле {clean_field_id} не найдено в API")
-            return f"Поле {clean_field_id}"
-                
-        except Exception as e:
-            logger.debug(f"Ошибка получения названия поля {field_id}: {e}")
-            return f"Поле {field_id}"
-
-    async def get_field_values_from_api(self, field_id: str, value_ids: List[Any]) -> str:
-        """
-        Получает текстовые значения поля через API Kaiten.
-        
-        Args:
-            field_id: ID поля
-            value_ids: Список ID значений
-            
-        Returns:
-            Отформатированная строка значений
-        """
-        try:
-            # Убираем префикс id_ если есть  
-            clean_field_id = field_id.replace('id_', '') if field_id.startswith('id_') else field_id
-            
-            # Получаем возможные значения поля через API
-            select_values = await self.kaiten_client.get_custom_property_select_values(int(clean_field_id))
-            
-            if select_values:
-                # Создаем маппинг ID -> текстовое значение
-                value_mapping = {}
-                for value_info in select_values:
-                    if 'id' in value_info and 'value' in value_info:
-                        value_mapping[str(value_info['id'])] = value_info['value']
-                
-                # Преобразуем ID значений в текст
-                text_values = []
-                for value_id in value_ids:
-                    value_text = value_mapping.get(str(value_id), str(value_id))
-                    text_values.append(value_text)
-                
-                logger.debug(f"Получены значения поля {clean_field_id} через API")
-                return "; ".join(text_values)
-            else:
-                # Если значения не найдены в API, возвращаем исходные ID
-                logger.debug(f"Значения для поля {clean_field_id} не найдены в API")
-                return "; ".join(str(v) for v in value_ids)
-            
-        except Exception as e:
-            logger.debug(f"Ошибка получения значений поля {field_id}: {e}")
-            # Возвращаем исходные ID если API недоступен
-            return "; ".join(str(v) for v in value_ids)
-
-    # УСТАРЕЛО: Метод format_custom_properties_for_description больше не используется
-    # Пользовательские поля теперь устанавливаются через API Bitrix24, а не добавляются в описание
-
     def parse_file_links_from_description(self, description: str) -> List[Tuple[str, str, str]]:
         """
         Парсит ссылки на файлы из описания карточки.
@@ -1564,44 +1490,6 @@ class CardMigrator:
         except Exception as e:
             logger.error(f"Ошибка загрузки маппинга пользовательских полей: {e}")
             return {}
-
-    async def migrate_card_with_custom_fields(self, card: Union[KaitenCard, SimpleKaitenCard], 
-                                            target_group_id: int) -> Optional[int]:
-        """
-        Мигрирует карточку с применением пользовательских полей.
-        Расширенная версия migrate_card с поддержкой кастомных полей.
-        
-        Args:
-            card: Карточка Kaiten для миграции
-            target_group_id: ID группы назначения в Bitrix24
-            
-        Returns:
-            ID созданной задачи в Bitrix24 или None при ошибке
-        """
-        try:
-            # Сначала мигрируем карточку обычным способом
-            bitrix_task_id = await self.migrate_card(card, target_group_id)
-            
-            if not bitrix_task_id:
-                logger.error(f"Не удалось создать задачу для карточки {card.id}")
-                return None
-            
-            # Получаем пользовательские поля из карточки
-            kaiten_properties = await self.get_custom_properties_from_card(card)
-            
-            # Применяем пользовательские поля к созданной задаче
-            if kaiten_properties:
-                success = await self.apply_custom_fields_to_bitrix_task(bitrix_task_id, kaiten_properties)
-                if not success:
-                    logger.warning(f"Не удалось применить пользовательские поля к задаче {bitrix_task_id}")
-                    # Не возвращаем None, так как основная задача создана успешно
-            
-            logger.success(f"Карточка {card.id} мигрирована с пользовательскими полями -> задача {bitrix_task_id}")
-            return bitrix_task_id
-            
-        except Exception as e:
-            logger.error(f"Ошибка миграции карточки {card.id} с пользовательскими полями: {e}")
-            return None
 
     async def migrate_card(self, card: Union[KaitenCard, SimpleKaitenCard], target_group_id: int) -> Optional[int]:
         """

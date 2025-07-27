@@ -146,24 +146,6 @@ class BitrixClient:
             logger.error(f"Ошибка добавления пользователя {user_id} в группу {group_id}")
             return False
 
-    async def add_user_to_workgroup_as_moderator(self, group_id: int, user_id: int) -> bool:
-        """
-        Добавляет пользователя в рабочую группу как помощника руководителя.
-        """
-        logger.debug(f"Добавление пользователя {user_id} в группу {group_id} как помощника руководителя...")
-        api_method = 'sonet_group.user.add'
-        params = {
-            'GROUP_ID': group_id,
-            'USER_ID': user_id,
-            'ROLE': 'M'  # M = Moderator (помощник руководителя), A = Admin, E = Employee
-        }
-        result = await self._request('POST', api_method, params)
-        
-        if result:
-            logger.success(f"Пользователь {user_id} назначен помощником руководителя группы {group_id}.")
-            return True
-        return False
-
     async def create_workgroup(self, group_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Создает новую рабочую группу в Bitrix24.
@@ -194,77 +176,6 @@ class BitrixClient:
                 logger.success(f"Рабочая группа '{group_name}' успешно создана.")
                 return result
         return None
-
-    async def create_workgroup_with_features(self, group_data: Dict[str, Any], features: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
-        """
-        Создает новую рабочую группу в Bitrix24 с настройкой возможностей.
-        
-        Args:
-            group_data: Данные группы
-            features: Список возможностей для включения (tasks, files, calendar, chat, etc.)
-            
-        Returns:
-            Данные созданной группы или None в случае ошибки
-        """
-        # Карта возможностей
-        all_features = {
-            'tasks': 'Задачи',
-            'files': 'Диск',
-            'calendar': 'Календарь', 
-            'chat': 'Чат',
-            'landing_knowledge': 'База знаний',
-            'search': 'Поиск',
-            'blog': 'Блог',
-            'forum': 'Форум',
-            'photo': 'Фото',
-            'market': 'Маркет',
-            'landing': 'Сайты',
-            'wiki': 'Вики'
-        }
-        
-        # Если не указаны возможности, используем стандартный набор
-        if features is None:
-            features = ['tasks', 'files', 'calendar', 'chat', 'landing_knowledge', 'search']
-        
-        # Проверяем доступность возможностей
-        features_to_enable = [f for f in features if f in all_features]
-        
-        logger.debug(f"Создаем группу с {len(features_to_enable)} включенными возможностями...")
-        logger.debug(f"Включенные возможности: {[all_features[f] for f in features_to_enable]}")
-        
-        try:
-            # Все доступные возможности из HTML формы
-            enhanced_data = group_data.copy()
-            
-            # Включаем только нужные возможности
-            for feature_name in all_features.keys():
-                param_name = f"{feature_name}_active"
-                if feature_name in features_to_enable:
-                    enhanced_data[param_name] = "Y"
-                    logger.debug(f"✅ Включаем возможность: {all_features[feature_name]} ({feature_name})")
-                else:
-                    enhanced_data[param_name] = "N"
-                    logger.debug(f"❌ Отключаем возможность: {all_features[feature_name]} ({feature_name})")
-                
-                # Добавляем пустое кастомное название (как в HTML форме)
-                name_param = f"{feature_name}_name"
-                enhanced_data[name_param] = ""
-            
-            # Поиск всегда включен (как hidden поле в HTML)
-            enhanced_data['search_active'] = "Y"
-            enhanced_data['search_name'] = ""
-            
-            logger.info(f"🎯 Создаем группу с {len(features_to_enable)} включенными возможностями...")
-            logger.info(f"📋 Включенные возможности: {[all_features[f] for f in features_to_enable]}")
-            
-            # Создаем группу обычным методом
-            result = await self.create_workgroup(enhanced_data)
-            
-            return result
-                
-        except Exception as e:
-            logger.error(f"Ошибка создания группы с возможностями: {e}")
-            return None
 
     async def create_task(self, title: str, description: str, responsible_id: int, group_id: int, **kwargs) -> Optional[int]:
         """
@@ -355,37 +266,6 @@ class BitrixClient:
         
         logger.info(f"Загружено {len(all_groups)} рабочих групп из Bitrix24")
         return all_groups
-        
-    async def get_task_list(self, group_id: int) -> List[Dict[str, Any]]:
-        """
-        Получает список задач в проекте.
-        """
-        api_method = 'tasks.task.list'
-        params = {
-            'filter': {'GROUP_ID': group_id},
-            'select': ['ID', 'TITLE', 'STATUS']
-        }
-        logger.info(f"Запрос задач для проекта {group_id} в Bitrix24...")
-        result = await self._request('GET', api_method, params)
-        if result and 'tasks' in result:
-            logger.success(f"Получено {len(result['tasks'])} задач.")
-            return result['tasks']
-        return []
-
-    async def get_workgroup_users(self, group_id: int) -> List[Dict[str, Any]]:
-        """Получает участников группы"""
-        logger.debug(f"Запрос пользователей для группы {group_id} из Bitrix24...")
-        api_method = 'sonet_group.user.get'
-        params = {'ID': group_id}
-        result = await self._request('GET', api_method, params)
-        if result:
-            if isinstance(result, list):
-                logger.success(f"Получено {len(result)} пользователей для группы {group_id}.")
-                return result
-            else:
-                logger.warning(f"Неожиданный тип ответа для группы {group_id}: {type(result)}")
-                return []
-        return []
 
     async def find_user_by_email(self, email: str) -> Optional[BitrixUser]:
         """Найти пользователя по email"""
@@ -590,39 +470,6 @@ class BitrixClient:
             logger.success(f"Стадия '{title}' успешно создана для группы {entity_id}.")
             return result
         return None
-
-    async def update_task_stage(self, stage_id: int, title: str, color: str = None, sort: int = None) -> bool:
-        """Обновляет существующую стадию задач"""
-        logger.debug(f"Обновление стадии {stage_id}...")
-        api_method = 'task.stages.update'
-        params = {
-            'id': stage_id,
-            'fields': {
-                'TITLE': title,
-                'SORT': sort,
-                'COLOR': color
-            },
-            'isAdmin': True  # Обновляем с правами администратора
-        }
-        result = await self._request('POST', api_method, params)
-        if result:
-            logger.success(f"Стадия {stage_id} успешно обновлена.")
-            return True
-        return False
-
-    async def delete_task_stage(self, stage_id: int) -> bool:
-        """Удаляет стадию задач"""
-        logger.debug(f"Удаление стадии {stage_id}...")
-        api_method = 'task.stages.delete'
-        params = {
-            'id': stage_id,
-            'isAdmin': True  # Удаляем с правами администратора
-        }
-        result = await self._request('POST', api_method, params)
-        if result:
-            logger.success(f"Стадия {stage_id} успешно удалена.")
-            return True
-        return False
 
     # ========== МЕТОДЫ ДЛЯ РАБОТЫ С ЧЕК-ЛИСТАМИ ЗАДАЧ ==========
     
@@ -1275,46 +1122,6 @@ class BitrixClient:
             logger.error(f"❌ Не удалось создать комментарий для задачи {task_id}")
             return None
 
-    async def download_file(self, file_id: str) -> Optional[bytes]:
-        """
-        Скачивает файл из Bitrix24 по его ID.
-        
-        Args:
-            file_id: ID файла в Bitrix24 (может содержать префикс 'n')
-            
-        Returns:
-            Содержимое файла в байтах или None при ошибке
-        """
-        try:
-            # Убираем префикс 'n' если есть
-            clean_file_id = file_id.replace('n', '') if file_id.startswith('n') else file_id
-            
-            # Получаем информацию о файле для получения download_url
-            file_info = await self._request('GET', 'disk.file.get', {'id': clean_file_id})
-            
-            if not file_info or 'DOWNLOAD_URL' not in file_info:
-                logger.error(f"❌ Не удалось получить download_url для файла {file_id}")
-                return None
-            
-            download_url = file_info['DOWNLOAD_URL']
-            file_name = file_info.get('NAME', 'unknown')
-            
-            logger.debug(f"Скачивание файла '{file_name}' по URL: {download_url}")
-            
-            # Скачиваем файл
-            async with httpx.AsyncClient() as client:
-                response = await client.get(download_url)
-                response.raise_for_status()
-                
-                file_data = response.content
-                logger.debug(f"Скачано {len(file_data)} байт")
-                
-                return file_data
-                
-        except Exception as e:
-            logger.error(f"Ошибка скачивания файла {file_id}: {e}")
-            return None
-
     async def remove_user_from_workgroup(self, group_id: int, user_id: int) -> bool:
         """
         Удаляет пользователя из рабочей группы в Bitrix24.
@@ -1380,17 +1187,18 @@ class BitrixClient:
             'members': []
         }
         
-        if result:
+        if result and isinstance(result, list):
             for user in result:
-                user_id = str(user.get('USER_ID', ''))
-                role = user.get('ROLE', '')
-                
-                if role == 'A':  # Admin/Owner
-                    roles['owner'].append(user_id)
-                elif role == 'E':  # Employee/Moderator  
-                    roles['moderators'].append(user_id)
-                elif role == 'K':  # Member
-                    roles['members'].append(user_id)
+                if isinstance(user, dict):
+                    user_id = str(user.get('USER_ID', ''))
+                    role = user.get('ROLE', '')
+                    
+                    if role == 'A':  # Admin/Owner
+                        roles['owner'].append(user_id)
+                    elif role == 'E':  # Employee/Moderator  
+                        roles['moderators'].append(user_id)
+                    elif role == 'K':  # Member
+                        roles['members'].append(user_id)
             
             logger.debug(f"Получены участники группы {group_id}: владельцев={len(roles['owner'])}, помощников={len(roles['moderators'])}, участников={len(roles['members'])}")
         
@@ -1474,39 +1282,6 @@ class BitrixClient:
         else:
             logger.error(f"Ошибка смены владельца группы {group_id}")
             return False
-
-    async def get_workgroup_info(self, group_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Получает подробную информацию о рабочей группе.
-        
-        Args:
-            group_id: ID группы
-            
-        Returns:
-            Информация о группе или None
-        """
-        logger.debug(f"Запрос подробной информации о группе {group_id} из Bitrix24...")
-        
-        try:
-            result = await self._request('GET', 'sonet_group.get', {'ID': group_id})
-            
-            if result and len(result) > 0:
-                group_info = result[0]
-                
-                logger.debug(f"Доступные поля группы {group_id}: {list(group_info.keys())}")
-                
-                # Логируем информацию о возможностях если есть
-                if 'FEATURES' in group_info:
-                    logger.debug(f"Фичи группы {group_id}: {len(group_info['FEATURES'])} элементов")
-                
-                return group_info
-            else:
-                logger.debug(f"Группа {group_id} не найдена")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Ошибка получения информации о группе {group_id}: {e}")
-            return None
 
     async def get_task_custom_fields(self, task_id: int) -> Dict[str, Any]:
         """
@@ -1741,67 +1516,6 @@ class BitrixClient:
             logger.error(f"❌ Ошибка поиска группы '{group_name}': {e}")
             return None
 
-    async def get_workgroup_tasks(self, group_id: int) -> List[Dict[str, Any]]:
-        """Получает задачи группы"""
-        logger.debug(f"Запрос задач для проекта {group_id} в Bitrix24...")
-        api_method = 'tasks.task.list'
-        params = {
-            'filter': {'GROUP_ID': group_id},
-            'select': ['ID', 'TITLE', 'STATUS']
-        }
-        result = await self._request('GET', api_method, params)
-        if result and 'tasks' in result:
-            logger.success(f"Получено {len(result['tasks'])} задач.")
-            return result['tasks']
-        return []
-
-    async def get_all_users(self, limit: int = 50) -> List[BitrixUser]:
-        """
-        Получает список всех пользователей из Bitrix24 с поддержкой пагинации.
-        """
-        logger.debug("Запрос всех пользователей из Bitrix24 с пагинацией...")
-        
-        all_users = []
-        page = 1
-        
-        while True:
-            start = (page - 1) * limit
-            logger.debug(f"  Страница {page}: start={start}")
-            
-            params = {
-                'start': start,
-                'limit': limit,
-                'filter': {
-                    'ACTIVE': 'Y'  # Только активные пользователи
-                }
-            }
-            
-            users_data = await self._request('GET', 'user.get', params)
-            
-            if not users_data:
-                logger.debug(f"  Страница {page}: пустой результат, завершаем пагинацию")
-                break
-            
-            logger.debug(f"  Страница {page}: получено {len(users_data)} пользователей")
-            
-            # Преобразуем в объекты BitrixUser
-            for user_data in users_data:
-                try:
-                    user = BitrixUser(**user_data)
-                    all_users.append(user)
-                except Exception as e:
-                    logger.debug(f"Ошибка обработки пользователя {user_data.get('ID')}: {e}")
-            
-            page += 1
-            
-            # Если получили меньше записей чем лимит, это последняя страница
-            if len(users_data) < 50:  # Используем 50 как стандартный лимит Bitrix24
-                logger.debug(f"  Получено {len(users_data)} < 50, это последняя страница")
-                break
-        
-        logger.info(f"Загружено {len(all_users)} активных пользователей из Bitrix24")
-        return all_users
-
     async def find_group_by_name(self, group_name: str) -> Optional[Dict[str, Any]]:
         """
         Ищет группу по точному совпадению названия.
@@ -1822,10 +1536,12 @@ class BitrixClient:
         result = await self._request('GET', api_method, params)
         
         if result and isinstance(result, list) and result:
-            logger.success(f"Найдена группа '{group_name}' с ID {result[0]['ID']}")
-            return result[0]
-        else:
-            logger.warning(f"Группа '{group_name}' не найдена")
-            return None
+            group = result[0]
+            if isinstance(group, dict):
+                logger.success(f"Найдена группа '{group_name}' с ID {group['ID']}")
+                return group
+        
+        logger.warning(f"Группа '{group_name}' не найдена")
+        return None
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 
@@ -59,7 +59,8 @@ class KaitenUser(BaseModel):
     # type: 2 - ответственный за задачу
     type: Optional[int] = None
 
-    @validator('email')
+    @field_validator('email')
+    @classmethod
     def email_must_be_valid(cls, v):
         if not v or '@' not in v:
             raise ValueError('Email must be valid')

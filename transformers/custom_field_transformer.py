@@ -82,7 +82,7 @@ class CustomFieldTransformer(BaseTransformer):
             bitrix_value = BitrixUserFieldEnum(
                 user_field_id=bitrix_field_id,
                 value=value_text,
-                def_="N",  # По умолчанию не выбрано
+                is_default="N",  # По умолчанию не выбрано
                 sort=(i + 1) * 100,  # Сортировка 100, 200, 300...
                 xml_id=kaiten_value_id
             )

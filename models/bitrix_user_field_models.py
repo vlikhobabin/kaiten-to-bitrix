@@ -37,19 +37,9 @@ class BitrixUserFieldEnum:
     id: Optional[int] = None
     user_field_id: int = 0
     value: str = ""
-    def_: str = "N"  # Y/N - значение по умолчанию
+    is_default: str = "N"  # Y/N - значение по умолчанию (было def_)
     sort: int = 500
     xml_id: Optional[str] = None  # ID значения из Kaiten
-    
-    @property
-    def def(self) -> str:
-        """Свойство для корректной работы с reserved keyword 'def'."""
-        return self.def_
-    
-    @def.setter
-    def def(self, value: str):
-        """Setter для свойства def."""
-        self.def_ = value
 
 
 @dataclass

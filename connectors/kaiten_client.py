@@ -109,18 +109,6 @@ class KaitenClient:
             return [KaitenBoard(**item) for item in data]
         return []
 
-    async def get_cards(self, board_id: int) -> List[KaitenCard]:
-        """
-        Получает карточки на указанной доске.
-        """
-        endpoint = f"/api/v1/boards/{board_id}/cards"
-        logger.info(f"Запрос карточек для доски {board_id}...")
-        data = await self._request("GET", endpoint)
-        if data:
-            logger.success(f"Получено {len(data)} карточек для доски {board_id}.")
-            return [KaitenCard(**item) for item in data]
-        return []
-
     async def get_card_by_id(self, card_id: int) -> Optional[SimpleKaitenCard]:
         """
         Получает карточку по ID (упрощенная модель) с полной информацией включая описание.
@@ -132,17 +120,6 @@ class KaitenClient:
             logger.debug(f"Получена полная карточка {card_id}.")
             return SimpleKaitenCard(**data)
         return None
-
-    async def get_cards_by_ids(self, card_ids: List[int]) -> List[SimpleKaitenCard]:
-        """
-        Получает карточки по списку ID (упрощенная модель).
-        """
-        cards = []
-        for card_id in card_ids:
-            card = await self.get_card_by_id(card_id)
-            if card:
-                cards.append(card)
-        return cards
 
     async def get_space_members(self, space_id: int) -> List[KaitenSpaceMember]:
         """
@@ -216,58 +193,6 @@ class KaitenClient:
             return []
         else:
             logger.warning(f"Доска {board_id} не найдена")
-            return []
-
-    async def get_board_lanes(self, board_id: int) -> List[KaitenLane]:
-        """
-        Получает lanes (подколонки) указанной доски.
-        """
-        endpoint = f"/api/v1/lanes"
-        params = {"board_id": board_id}
-        logger.info(f"Запрос lanes для доски {board_id}...")
-        data = await self._request("GET", endpoint, params=params)
-        if data and isinstance(data, list):
-            logger.success(f"Получено {len(data)} lanes для доски {board_id}.")
-            return [KaitenLane(**item) for item in data]
-        elif data and 'lanes' in data:
-            lanes_data = data['lanes']
-            logger.success(f"Получено {len(lanes_data)} lanes для доски {board_id}.")
-            return [KaitenLane(**item) for item in lanes_data]
-        else:
-            logger.warning(f"Lanes для доски {board_id} не найдены")
-            return []
-
-    async def get_board_info(self, board_id: int) -> Optional[dict]:
-        """
-        Получает полную информацию о доске.
-        """
-        endpoint = f"/api/v1/boards/{board_id}"
-        logger.info(f"Запрос полной информации о доске {board_id}...")
-        data = await self._request("GET", endpoint)
-        if data:
-            logger.success(f"Получена информация о доске {board_id}.")
-            return data
-        else:
-            logger.warning(f"Информация о доске {board_id} не найдена")
-            return None
-
-    async def get_board_subcolumns(self, board_id: int) -> List[dict]:
-        """
-        Получает подколонки (subcolumns) указанной доски.
-        """
-        endpoint = f"/api/v1/subcolumns"
-        params = {"board_id": board_id}
-        logger.info(f"Запрос подколонок для доски {board_id}...")
-        data = await self._request("GET", endpoint, params=params)
-        if data and isinstance(data, list):
-            logger.success(f"Получено {len(data)} подколонок для доски {board_id}.")
-            return data
-        elif data and 'subcolumns' in data:
-            subcolumns_data = data['subcolumns']
-            logger.success(f"Получено {len(subcolumns_data)} подколонок для доски {board_id}.")
-            return subcolumns_data
-        else:
-            logger.warning(f"Подколонки для доски {board_id} не найдены")
             return []
 
     async def get_card_checklists(self, card_id: int) -> List[dict]:
@@ -611,149 +536,6 @@ class KaitenClient:
         
         logger.info(f"Найдено {len(administrators)} администраторов в пространстве {space_id}")
         return administrators
-
-    async def get_space_access_groups(self, space_id: int) -> List[Dict[str, Any]]:
-        """
-        Получает список групп доступа для указанного пространства.
-        
-        Args:
-            space_id: ID пространства
-            
-        Returns:
-            Список групп доступа пространства
-        """
-        try:
-            # Пробуем возможные endpoints для получения групп доступа пространства
-            possible_endpoints = [
-                f"/api/v1/spaces/{space_id}/groups",
-                f"/api/v1/spaces/{space_id}/access-groups",
-                f"/api/v1/spaces/{space_id}/group-access"
-            ]
-            
-            for endpoint in possible_endpoints:
-                logger.debug(f"Пробую получить группы доступа пространства {space_id} через {endpoint}...")
-                data = await self._request("GET", endpoint)
-                
-                if data is not None:
-                    if isinstance(data, list):
-                        logger.success(f"Получено {len(data)} групп доступа для пространства {space_id} через {endpoint}")
-                        return data
-                    elif isinstance(data, dict) and 'groups' in data:
-                        groups = data['groups']
-                        logger.success(f"Получено {len(groups)} групп доступа для пространства {space_id} через {endpoint}")
-                        return groups
-                    else:
-                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
-                        continue
-            
-            # Если прямые endpoints не сработали, пробуем через API /api/latest/groups
-            logger.debug(f"Пробую получить группы доступа через общий endpoint...")
-            endpoint = "/api/latest/groups"
-            data = await self._request("GET", endpoint)
-            
-            if data and isinstance(data, list):
-                # Фильтруем группы, которые имеют доступ к указанному пространству
-                space_groups = []
-                for group in data:
-                    # Проверяем есть ли в группе информация о доступе к пространствам
-                    if self._group_has_space_access(group, space_id):
-                        space_groups.append(group)
-                
-                if space_groups:
-                    logger.success(f"Найдено {len(space_groups)} групп доступа для пространства {space_id} через фильтрацию")
-                    return space_groups
-            
-            logger.debug(f"Группы доступа для пространства {space_id} не найдены")
-            return []
-                
-        except Exception as e:
-            logger.debug(f"Ошибка при получении групп доступа пространства {space_id}: {e}")
-            return []
-
-    def _group_has_space_access(self, group: Dict[str, Any], space_id: int) -> bool:
-        """
-        Проверяет имеет ли группа доступ к указанному пространству.
-        
-        Args:
-            group: Данные группы
-            space_id: ID пространства
-            
-        Returns:
-            True если группа имеет доступ к пространству
-        """
-        try:
-            # Возможные поля где может храниться информация о доступе к пространствам
-            possible_fields = ['spaces', 'space_ids', 'accessible_spaces', 'space_access']
-            
-            for field in possible_fields:
-                if field in group and group[field]:
-                    spaces_data = group[field]
-                    # Проверяем разные форматы хранения
-                    if isinstance(spaces_data, list):
-                        # Список ID пространств или объектов
-                        for item in spaces_data:
-                            if isinstance(item, int) and item == space_id:
-                                return True
-                            elif isinstance(item, dict) and item.get('id') == space_id:
-                                return True
-                            elif isinstance(item, dict) and item.get('space_id') == space_id:
-                                return True
-            
-            return False
-            
-        except Exception as e:
-            logger.debug(f"Ошибка проверки доступа группы к пространству: {e}")
-            return False
-
-    async def get_group_members(self, group_id: int) -> List[Dict[str, Any]]:
-        """
-        Получает список участников группы доступа.
-        
-        Args:
-            group_id: ID группы доступа
-            
-        Returns:
-            Список участников группы
-        """
-        try:
-            # Пробуем endpoints согласно документации Kaiten
-            possible_configs = [
-                {"endpoint": "/group-users/get-list-of-group-users", "params": {"group_id": group_id}},
-                {"endpoint": f"/api/latest/group-users/get-list-of-group-users", "params": {"group_id": group_id}},
-                {"endpoint": f"/api/latest/groups/{group_id}/members", "params": None}, 
-                {"endpoint": f"/api/latest/groups/{group_id}/users", "params": None},
-                {"endpoint": f"/api/v1/groups/{group_id}/members", "params": None},
-                {"endpoint": f"/api/v1/groups/{group_id}/users", "params": None}
-            ]
-            
-            for config in possible_configs:
-                endpoint = config["endpoint"]
-                params = config["params"]
-                logger.debug(f"Пробую получить участников группы {group_id} через {endpoint}...")
-                data = await self._request("GET", endpoint, params=params)
-                
-                if data is not None:
-                    if isinstance(data, list):
-                        logger.debug(f"Получено {len(data)} участников группы {group_id} через {endpoint}")
-                        return data
-                    elif isinstance(data, dict) and 'members' in data:
-                        members = data['members']
-                        logger.debug(f"Получено {len(members)} участников группы {group_id} через {endpoint}")
-                        return members
-                    elif isinstance(data, dict) and 'users' in data:
-                        users = data['users']
-                        logger.debug(f"Получено {len(users)} участников группы {group_id} через {endpoint}")
-                        return users
-                    else:
-                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
-                        continue
-            
-            logger.debug(f"Участники группы {group_id} не найдены")
-            return []
-                
-        except Exception as e:
-            logger.debug(f"Ошибка при получении участников группы {group_id}: {e}")
-            return []
 
     async def get_all_space_users_including_groups(self, space_id: int) -> List[Dict[str, Any]]:
         """
@@ -1137,82 +919,6 @@ class KaitenClient:
                 
         except Exception as e:
             logger.error(f"❌ Ошибка при получении сущностей группы {group_uid}: {e}")
-            return []
-
-    async def get_tree_entity_roles(self) -> List[Dict[str, Any]]:
-        """
-        Получает список ролей для древовидных сущностей.
-        
-        Returns:
-            Список ролей сущностей
-        """
-        try:
-            # Пробуем разные endpoints из документации
-            possible_endpoints = [
-                "/api/latest/tree-entity-roles",
-                "/api/v1/tree-entity-roles", 
-                "/tree-entity-roles",
-            ]
-            
-            for endpoint in possible_endpoints:
-                logger.info(f"🌳 Пробуем получить роли сущностей через {endpoint}...")
-                data = await self._request("GET", endpoint)
-                
-                if data is not None:
-                    if isinstance(data, list):
-                        logger.success(f"✅ Найдено {len(data)} ролей сущностей через {endpoint}")
-                        return data
-                    elif isinstance(data, dict) and 'roles' in data:
-                        roles = data['roles']
-                        logger.success(f"✅ Найдено {len(roles)} ролей сущностей через {endpoint}")
-                        return roles
-                    else:
-                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
-                        continue
-            
-            logger.warning("❌ Роли сущностей не найдены ни через один endpoint")
-            return []
-                
-        except Exception as e:
-            logger.error(f"❌ Ошибка при получении ролей сущностей: {e}")
-            return []
-
-    async def get_tree_entities(self) -> List[Dict[str, Any]]:
-        """
-        Получает список древовидных сущностей.
-        
-        Returns:
-            Список древовидных сущностей (предположительно пространства)
-        """
-        try:
-            # Пробуем разные endpoints из документации
-            possible_endpoints = [
-                "/api/latest/tree-entities",
-                "/api/v1/tree-entities",
-                "/tree-entities",
-            ]
-            
-            for endpoint in possible_endpoints:
-                logger.info(f"🌳 Пробуем получить древовидные сущности через {endpoint}...")
-                data = await self._request("GET", endpoint)
-                
-                if data is not None:
-                    if isinstance(data, list):
-                        logger.success(f"✅ Найдено {len(data)} древовидных сущностей через {endpoint}")
-                        return data
-                    elif isinstance(data, dict) and 'entities' in data:
-                        entities = data['entities']
-                        logger.success(f"✅ Найдено {len(entities)} древовидных сущностей через {endpoint}")
-                        return entities
-                    else:
-                        logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
-                        continue
-            
-            logger.warning("❌ Древовидные сущности не найдены ни через один endpoint")
-            return []
-                
-        except Exception as e:
-            logger.error(f"❌ Ошибка при получении древовидных сущностей: {e}")
             return []
 
     async def find_group_by_name(self, group_name: str) -> Optional[Dict[str, Any]]:
