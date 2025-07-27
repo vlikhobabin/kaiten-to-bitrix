@@ -36,9 +36,9 @@ if (-not $ServerHost -or -not $ServerUser -or -not $PrivateKeyPath) {
     exit 1
 }
 
-Write-Host "🚀 UNIFIED VPS SCRIPTS DEPLOYMENT" -ForegroundColor Yellow
+Write-Host "UNIFIED VPS SCRIPTS DEPLOYMENT" -ForegroundColor Yellow
 Write-Host "=" * 70 -ForegroundColor Blue
-Write-Host "📁 Target directory: $VpsScriptsDir" -ForegroundColor White
+Write-Host "Target directory: $VpsScriptsDir" -ForegroundColor White
 Write-Host ""
 
 # Check if private key exists
@@ -67,21 +67,21 @@ $VpsScripts = @(
 )
 
 try {
-    Write-Host "📁 Creating VPS scripts directory..." -ForegroundColor Yellow
+    Write-Host "[INFO] Creating VPS scripts directory..." -ForegroundColor Yellow
     
     $createDirCommand = "mkdir -p $VpsScriptsDir"
     
     $process = Start-Process -FilePath "ssh" -ArgumentList "-i", "`"$PrivateKeyPath`"", "${ServerUser}@${ServerHost}", $createDirCommand -Wait -PassThru -WindowStyle Hidden
     
     if ($process.ExitCode -eq 0) {
-        Write-Host "✅ VPS directory created: $VpsScriptsDir" -ForegroundColor Green
+        Write-Host "[SUCCESS] VPS directory created: $VpsScriptsDir" -ForegroundColor Green
     } else {
-        Write-Host "❌ Failed to create VPS directory" -ForegroundColor Red
+        Write-Host "[ERROR] Failed to create VPS directory" -ForegroundColor Red
         exit 1
     }
     
     Write-Host ""
-    Write-Host "📤 Deploying VPS scripts..." -ForegroundColor Yellow
+    Write-Host "[INFO] Deploying VPS scripts..." -ForegroundColor Yellow
     
     $SuccessfulDeployments = 0
     $TotalDeployments = $VpsScripts.Count
@@ -91,13 +91,13 @@ try {
         $RemotePath = $ScriptInfo.Remote
         $Description = $ScriptInfo.Description
         
-        Write-Host "  📄 $Description..." -ForegroundColor White
+        Write-Host "  [FILE] $Description..." -ForegroundColor White
         Write-Host "     Local: $LocalPath" -ForegroundColor Gray
         Write-Host "     Remote: $RemotePath" -ForegroundColor Gray
         
         # Check if local file exists
         if (-not (Test-Path $LocalPath)) {
-            Write-Host "     ❌ Local file not found!" -ForegroundColor Red
+            Write-Host "     [ERROR] Local file not found!" -ForegroundColor Red
             continue
         }
         
@@ -105,48 +105,48 @@ try {
         $process = Start-Process -FilePath "scp" -ArgumentList "-i", "`"$PrivateKeyPath`"", "`"$LocalPath`"", "${ServerUser}@${ServerHost}:$RemotePath" -Wait -PassThru -WindowStyle Hidden
         
         if ($process.ExitCode -eq 0) {
-            Write-Host "     ✅ Deployed successfully" -ForegroundColor Green
+            Write-Host "     [SUCCESS] Deployed successfully" -ForegroundColor Green
             $SuccessfulDeployments++
         } else {
-            Write-Host "     ❌ Deployment failed (exit code: $($process.ExitCode))" -ForegroundColor Red
+            Write-Host "     [ERROR] Deployment failed (exit code: $($process.ExitCode))" -ForegroundColor Red
         }
         
         Write-Host ""
     }
     
-    Write-Host "🔧 Setting permissions for all scripts..." -ForegroundColor Yellow
+    Write-Host "[INFO] Setting permissions for all scripts..." -ForegroundColor Yellow
     
     $chmodCommand = "chmod +x $VpsScriptsDir/*.py && find $VpsScriptsDir -name '*.py' -exec chmod 755 {} \;"
     
     $process = Start-Process -FilePath "ssh" -ArgumentList "-i", "`"$PrivateKeyPath`"", "${ServerUser}@${ServerHost}", $chmodCommand -Wait -PassThru -WindowStyle Hidden
     
     if ($process.ExitCode -eq 0) {
-        Write-Host "✅ Permissions set successfully" -ForegroundColor Green
+        Write-Host "[SUCCESS] Permissions set successfully" -ForegroundColor Green
     } else {
-        Write-Host "⚠️ Warning: Could not set all permissions" -ForegroundColor Yellow
+        Write-Host "[WARNING] Could not set all permissions" -ForegroundColor Yellow
     }
     
     Write-Host ""
-    Write-Host "📊 DEPLOYMENT SUMMARY:" -ForegroundColor Blue
+    Write-Host "DEPLOYMENT SUMMARY:" -ForegroundColor Blue
     Write-Host "=" * 50 -ForegroundColor Blue
-    Write-Host "✅ Successful: $SuccessfulDeployments / $TotalDeployments scripts" -ForegroundColor Green
-    Write-Host "📁 VPS Directory: $VpsScriptsDir" -ForegroundColor White
+    Write-Host "[SUCCESS] Deployed: $SuccessfulDeployments / $TotalDeployments scripts" -ForegroundColor Green
+    Write-Host "VPS Directory: $VpsScriptsDir" -ForegroundColor White
     
     if ($SuccessfulDeployments -eq $TotalDeployments) {
-        Write-Host "🎉 ALL VPS SCRIPTS DEPLOYED SUCCESSFULLY!" -ForegroundColor Green
+        Write-Host "ALL VPS SCRIPTS DEPLOYED SUCCESSFULLY!" -ForegroundColor Green
     } else {
-        Write-Host "⚠️ Some scripts failed to deploy" -ForegroundColor Yellow
+        Write-Host "[WARNING] Some scripts failed to deploy" -ForegroundColor Yellow
     }
     
     Write-Host ""
-    Write-Host "📋 DEPLOYED SCRIPTS:" -ForegroundColor Yellow
+    Write-Host "DEPLOYED SCRIPTS:" -ForegroundColor Yellow
     foreach ($ScriptInfo in $VpsScripts) {
         $ScriptName = Split-Path $ScriptInfo.Remote -Leaf
         Write-Host "  • $ScriptName - $($ScriptInfo.Description)" -ForegroundColor White
     }
     
     Write-Host ""
-    Write-Host "🎯 USAGE EXAMPLES:" -ForegroundColor Yellow
+    Write-Host "USAGE EXAMPLES:" -ForegroundColor Yellow
     Write-Host "=" * 50 -ForegroundColor Blue
     Write-Host "SSH to server:" -ForegroundColor White
     Write-Host "  ssh -i `"$PrivateKeyPath`" ${ServerUser}@${ServerHost}" -ForegroundColor Gray
@@ -162,7 +162,7 @@ try {
     Write-Host "  python3 $VpsScriptsDir/update_group_features.py --update-all" -ForegroundColor Gray
     Write-Host ""
     
-    Write-Host "💡 IMPORTANT: Update Python code to use new paths!" -ForegroundColor Yellow
+    Write-Host "IMPORTANT: Update Python code to use new paths!" -ForegroundColor Yellow
     Write-Host "  1. migrators/custom_field_migrator.py" -ForegroundColor White
     Write-Host "  2. config/settings.py" -ForegroundColor White
     Write-Host "  3. migrators/space_migrator.py" -ForegroundColor White

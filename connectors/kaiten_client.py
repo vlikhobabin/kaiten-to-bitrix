@@ -46,72 +46,55 @@ class KaitenClient:
                 return None
 
     async def get_spaces(self) -> List[KaitenSpace]:
-        """
-        Получает список всех пространств.
-        """
+        """Получение всех пространств из Kaiten"""
+        logger.debug("Запрос списка пространств из Kaiten...")
         endpoint = "/api/v1/spaces"
-        logger.info("Запрос списка пространств из Kaiten...")
         data = await self._request("GET", endpoint)
         if data:
             logger.success(f"Получено {len(data)} пространств.")
             return [KaitenSpace(**item) for item in data]
         return []
 
-    async def get_users(self, limit: int = 100) -> List[KaitenUser]:
-        """Получить список всех пользователей с поддержкой пагинации"""
+    async def get_users(self, limit: int = 50) -> List[KaitenUser]:
+        """
+        Получение всех пользователей из Kaiten с пагинацией.
+        Убираем is_archived пользователей.
+        """
         users = []
-        offset = 0
-        page = 1
-        max_pages = 3  # Ограничиваем максимум 3 страницами (~300 пользователей)
+        page = 0
         
-        while page <= max_pages:
-            try:
-                params = {
-                    'limit': limit,
-                    'offset': offset
-                }
-                
-                logger.info(f"Запрос пользователей: страница {page}, лимит {limit}, смещение {offset}")
-                response = await self._request('GET', '/api/v1/users', params=params)
-                
-                # API Kaiten возвращает массив пользователей напрямую, а не обернутый в объект
-                if not response or not isinstance(response, list):
-                    logger.warning(f"Некорректный ответ API на странице {page}: {response}")
-                    break
-                
-                page_users = response  # Изменено: response уже является массивом
-                logger.info(f"Страница {page}: получено {len(page_users)} пользователей")
-                
-                # Если получили пустой массив, значит больше пользователей нет
-                if not page_users:
-                    logger.info("Получен пустой массив пользователей, завершаем пагинацию")
-                    break
-                
-                # Обрабатываем всех пользователей
-                for user_data in page_users:
-                    try:
-                        user = KaitenUser(**user_data)
-                        users.append(user)
-                        # Показываем первых 3 пользователей для проверки
-                        if len(users) <= 3:
-                            logger.debug(f"Пользователь #{len(users)}: {user.email}")
-                    except Exception as e:
-                        logger.debug(f"Ошибка валидации пользователя {user_data.get('id')}: {e}")
-                
-                # Если получили меньше пользователей чем лимит, значит это последняя страница
-                if len(page_users) < limit:
-                    logger.info(f"Получено {len(page_users)} < {limit}, это последняя страница")
-                    break
-                
-                # Переходим к следующей странице
-                offset += limit
-                page += 1
-                
-            except Exception as e:
-                logger.error(f"Ошибка при получении пользователей на странице {page}: {e}")
+        while True:
+            offset = page * limit
+            logger.debug(f"Запрос пользователей: страница {page}, лимит {limit}, смещение {offset}")
+            
+            endpoint = f"users?limit={limit}&offset={offset}"
+            result = await self._request("GET", endpoint)
+            
+            if not result:
+                break
+            
+            # Фильтруем архивированных пользователей на уровне сырых данных
+            active_user_data = [user_data for user_data in result if not user_data.get('is_archived', False)]
+            page_users = [KaitenUser(**user_data) for user_data in active_user_data]
+            
+            if not page_users:
+                logger.debug("Получен пустой массив пользователей, завершаем пагинацию")
+                break
+            
+            users.extend(page_users)
+            
+            archived_count = len(result) - len(page_users)
+            if archived_count > 0:
+                logger.debug(f"Страница {page}: исключено {archived_count} архивированных пользователей")
+            
+            page += 1
+            
+            # Прерываем если получили меньше запрошенного лимита
+            if len(page_users) < limit:
+                logger.debug(f"Получено {len(page_users)} < {limit}, это последняя страница")
                 break
         
-        logger.success(f"Итого загружено {len(users)} пользователей за {page-1} страниц")
+        logger.info(f"Загружено {len(users)} активных пользователей из Kaiten")
         return users
         
     async def get_boards(self, space_id: int) -> List[KaitenBoard]:
@@ -423,7 +406,7 @@ class KaitenClient:
             if self._properties_cache_file.exists():
                 with open(self._properties_cache_file, 'r', encoding='utf-8') as f:
                     self._properties_cache = json.load(f)
-                    logger.debug(f"Загружен кеш пользовательских свойств: {len(self._properties_cache.get('properties', {}))} полей")
+                    logger.debug(f"Загружен кеш пользовательских свойств: {len((self._properties_cache or {}).get('properties', {}))} полей")
             else:
                 self._properties_cache = {
                     "created_at": datetime.now().isoformat(),
@@ -433,7 +416,7 @@ class KaitenClient:
                 }
                 logger.debug("Создан новый кеш пользовательских свойств")
             
-            return self._properties_cache
+            return self._properties_cache or {}
             
         except Exception as e:
             logger.error(f"Ошибка загрузки кеша свойств: {e}")
@@ -594,7 +577,7 @@ class KaitenClient:
 
     async def get_space_users_with_roles(self, space_id: int) -> List[Dict[str, Any]]:
         """
-        Получает список пользователей пространства с их ролями и правами доступа.
+        Получает пользователей пространства с их ролями и правами доступа.
         
         Args:
             space_id: ID пространства
@@ -783,10 +766,11 @@ class KaitenClient:
             Список всех уникальных пользователей с доступом к пространству
         """
         try:
+            logger.debug(f"Получаем пользователей с ролями пространства {space_id}...")
+            
             all_users = {}  # Используем словарь для автоматического удаления дубликатов по ID
             
-            # 1. Получаем пользователей с ролями (администраторы, редакторы и некоторые участники)
-            logger.info(f"🔍 Получаем пользователей с ролями пространства {space_id}...")
+            # 1. Получаем пользователей с ролями (администраторы, редакторы)
             users_with_roles = await self.get_space_users_with_roles(space_id)
             
             for user in users_with_roles:
@@ -794,142 +778,170 @@ class KaitenClient:
                 if user_id:
                     all_users[user_id] = {
                         **user,
-                        'access_type': 'roles',  # Помечаем как пользователя с ролью
+                        'access_type': 'roles',
                         'source': 'roles'
                     }
             
-            logger.info(f"📋 Найдено {len(users_with_roles)} пользователей с ролями")
+            logger.debug(f"Найдено {len(users_with_roles)} пользователей с ролями")
             
-            # 2. Получаем всех участников пространства (включая обычных участников)
-            logger.info(f"🔍 Получаем всех участников пространства {space_id}...")
-            try:
-                space_members = await self.get_space_members(space_id)
-                
+            # 2. Получаем всех участников пространства (включая только участников без ролей)
+            logger.debug(f"Получаем всех участников пространства {space_id}...")
+            space_members = await self.get_space_members(space_id)
+            
+            if space_members:
                 for member in space_members:
-                    # Обрабатываем как объект KaitenSpaceMember или словарь
-                    if hasattr(member, 'id'):
-                        user_id = member.id
-                        user_data = {
-                            'id': member.id,
-                            'full_name': member.full_name,
-                            'email': member.email,
-                            'space_role_id': getattr(member, 'space_role_id', None)
-                        }
-                    else:
-                        user_id = member.get('id')
-                        user_data = member
-                    
+                    # Convert KaitenSpaceMember to dict for processing
+                    member_dict = member.model_dump() if hasattr(member, 'model_dump') else member.__dict__
+                    user_id = member_dict.get('id')
                     if user_id:
-                        # Если пользователь уже есть из ролей, объединяем информацию
+                        # Если пользователь уже есть, обновляем информацию о доступе
                         if user_id in all_users:
-                            existing_access = all_users[user_id].get('access_type', 'roles')
-                            all_users[user_id].update(user_data)
-                            all_users[user_id]['access_type'] = 'both' if existing_access == 'roles' else 'members'
-                            all_users[user_id]['source'] = 'both'
+                            all_users[user_id]['access_type'] = 'both'
+                            # Объединяем данные, приоритет у пользователей с ролями
+                            all_users[user_id].update({
+                                k: v for k, v in member_dict.items() 
+                                if k not in all_users[user_id] or all_users[user_id][k] is None
+                            })
                         else:
-                            # Новый пользователь только из участников
+                            # Новый пользователь только как участник
                             all_users[user_id] = {
-                                **user_data,
+                                **member_dict,
                                 'access_type': 'members',
                                 'source': 'members'
                             }
                 
-                logger.info(f"📋 Найдено {len(space_members)} участников пространства")
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Ошибка получения участников пространства {space_id}: {e}")
-                logger.info("Продолжаем только с пользователями с ролями")
-            
-            # 3. Получаем группы доступа пространства
-            logger.info(f"🔍 Получаем группы доступа пространства {space_id}...")
-            access_groups = await self.get_space_access_groups(space_id)
-            
-            if access_groups:
-                logger.info(f"📋 Найдено {len(access_groups)} групп доступа для пространства")
-                
-                # 4. Получаем участников каждой группы доступа
-                for group in access_groups:
-                    group_id = group.get('id')
-                    group_name = group.get('name', f'ID {group_id}')
-                    
-                    if group_id:
-                        logger.info(f"👥 Получаем участников группы '{group_name}' (ID: {group_id})...")
-                        group_members = await self.get_group_members(group_id)
-                        
-                        for member in group_members:
-                            user_id = member.get('id')
-                            if user_id:
-                                # Если пользователь уже есть, обновляем информацию о доступе
-                                if user_id in all_users:
-                                    # Пользователь имеет доступ через несколько источников
-                                    existing_access = all_users[user_id].get('access_type', 'roles')
-                                    all_users[user_id]['access_type'] = 'groups_and_direct' if existing_access in ['roles', 'members', 'both'] else 'groups'
-                                    all_users[user_id]['groups'] = all_users[user_id].get('groups', []) + [group_name]
-                                else:
-                                    # Новый пользователь только через группу
-                                    all_users[user_id] = {
-                                        **member,
-                                        'access_type': 'groups',
-                                        'source': 'groups',
-                                        'groups': [group_name]
-                                    }
-                        
-                        logger.info(f"✅ Обработано {len(group_members)} участников группы '{group_name}'")
-                        
+                logger.debug(f"Найдено {len(space_members)} участников пространства")
             else:
-                logger.info("📋 Группы доступа не найдены для пространства")
+                # Если не удалось получить участников через API, продолжаем только с пользователями с ролями
+                logger.debug("Продолжаем только с пользователями с ролями")
+            
+            # 3. Получаем пользователей из групп доступа
+            logger.debug(f"Получаем группы доступа пространства {space_id}...")
+            space_users_via_groups = await self.get_space_users_via_groups(space_id)
+            
+            if space_users_via_groups:
+                logger.debug(f"Найдено {len(space_users_via_groups)} пользователей через группы доступа")
+                
+                for user in space_users_via_groups:
+                    user_id = user.get('id')
+                    if user_id:
+                        # Если пользователь уже есть, обновляем информацию о доступе
+                        if user_id in all_users:
+                            current_access = all_users[user_id]['access_type']
+                            if current_access == 'roles':
+                                all_users[user_id]['access_type'] = 'groups_and_direct'
+                            elif current_access == 'members':
+                                all_users[user_id]['access_type'] = 'groups_and_direct'
+                            elif current_access == 'both':
+                                all_users[user_id]['access_type'] = 'groups_and_direct'
+                            
+                            # Добавляем информацию о группах
+                            existing_groups = all_users[user_id].get('groups', [])
+                            new_group = user.get('group_name')
+                            if new_group and new_group not in existing_groups:
+                                all_users[user_id]['groups'] = existing_groups + [new_group]
+                        else:
+                            # Новый пользователь только через группу
+                            all_users[user_id] = {
+                                **user,
+                                'access_type': 'groups',
+                                'source': 'groups',
+                                'groups': [user.get('group_name', 'Unknown Group')]
+                            }
+            else:
+                logger.debug("Группы доступа не найдены для пространства")
             
             # Возвращаем всех уникальных пользователей
-            unique_users = list(all_users.values())
+            result = list(all_users.values())
             
-            # Подсчитываем статистику доступа
-            roles_count = len([u for u in unique_users if u.get('access_type') == 'roles'])
-            members_count = len([u for u in unique_users if u.get('access_type') == 'members'])
-            both_count = len([u for u in unique_users if u.get('access_type') == 'both'])
-            groups_count = len([u for u in unique_users if u.get('access_type') == 'groups'])
-            groups_and_direct_count = len([u for u in unique_users if u.get('access_type') == 'groups_and_direct'])
+            # Статистика по типам доступа
+            roles_count = len([u for u in result if u.get('access_type') == 'roles'])
+            members_count = len([u for u in result if u.get('access_type') == 'members'])
+            both_count = len([u for u in result if u.get('access_type') == 'both'])
+            groups_count = len([u for u in result if u.get('access_type') == 'groups'])
+            groups_and_direct_count = len([u for u in result if u.get('access_type') == 'groups_and_direct'])
             
-            logger.success(f"✅ Всего найдено {len(unique_users)} уникальных пользователей:")
-            logger.info(f"   📋 Только с ролями: {roles_count}")
-            logger.info(f"   👥 Только участники: {members_count}")
-            logger.info(f"   🔗 И роли, и участники: {both_count}")
-            logger.info(f"   👑 Только через группы: {groups_count}")
-            logger.info(f"   🌟 Группы + прямой доступ: {groups_and_direct_count}")
+            logger.debug(f"   Только с ролями: {roles_count}")
+            logger.debug(f"   Только участники: {members_count}")
+            logger.debug(f"   И роли, и участники: {both_count}")
+            logger.debug(f"   Только через группы: {groups_count}")
+            logger.debug(f"   Группы + прямой доступ: {groups_and_direct_count}")
             
-            return unique_users
-            
+            return result
+                
         except Exception as e:
             logger.error(f"Ошибка при получении всех пользователей пространства {space_id}: {e}")
             return []
 
     # ========== МЕТОДЫ ДЛЯ РАБОТЫ С ГРУППАМИ ДОСТУПА ==========
     
+    def _is_cache_valid(self, cache_file: Path, max_age_hours: int = 24) -> bool:
+        """Проверяет актуальность кеша"""
+        if not cache_file.exists():
+            return False
+        
+        # Проверяем возраст файла
+        file_age = datetime.now() - datetime.fromtimestamp(cache_file.stat().st_mtime)
+        age_hours = file_age.total_seconds() / 3600
+        
+        if age_hours <= max_age_hours:
+            logger.debug(f"Кеш актуален (возраст: {age_hours:.1f} часов)")
+            return True
+        else:
+            logger.debug(f"Кеш устарел (возраст: {age_hours:.1f} часов)")
+            return False
+
+    async def _get_all_groups_from_api(self) -> List[Dict[str, Any]]:
+        """
+        Получает список всех групп доступа напрямую через API (без кеша).
+        Используется для обновления кеша во избежание циклических зависимостей.
+        
+        Returns:
+            Список всех групп доступа с базовой информацией (id, uid, name)
+        """
+        try:
+            endpoint = "/api/latest/company/groups"
+            logger.info(f"🔍 Получаем группы компании через API: {endpoint}...")
+            data = await self._request("GET", endpoint)
+            
+            if data is not None:
+                if isinstance(data, list):
+                    logger.success(f"✅ Найдено {len(data)} групп доступа через API")
+                    return data
+                else:
+                    logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
+                    return []
+            
+            logger.warning("❌ Группы доступа не найдены")
+            return []
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении групп доступа: {e}")
+            return []
+
     async def get_groups_cache(self) -> Dict[str, Any]:
         """
         Получает и кеширует информацию о всех группах доступа с их пользователями и сущностями.
         
         Returns:
-            Словарь с информацией о группах: {group_id: {name, users, entities}}
+            Словарь с информацией о группах: {group_uid: {id, uid, name, users, entities}}
         """
         try:
             cache_file = Path("mappings/groups_cache.json")
             
-            # Проверяем существует ли кеш и не старше ли он 24 часов
-            if cache_file.exists():
-                cache_time = cache_file.stat().st_mtime
-                current_time = time.time()
-                if current_time - cache_time < 24 * 3600:  # 24 часа
-                    try:
-                        with open(cache_file, 'r', encoding='utf-8') as f:
-                            cached_data = json.load(f)
-                        logger.info(f"📂 Загружен кеш групп: {len(cached_data)} записей")
-                        return cached_data
-                    except Exception as e:
-                        logger.warning(f"⚠️ Ошибка чтения кеша групп: {e}")
+            # Проверяем актуальность кеша
+            if self._is_cache_valid(cache_file, max_age_hours=24):
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        cached_data = json.load(f)
+                    logger.success(f"📂 Загружен кеш групп: {len(cached_data)} записей")
+                    return cached_data
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка чтения кеша групп: {e}")
             
-            # Получаем все группы
-            logger.info("🔍 Получаем все группы доступа из Kaiten...")
-            all_groups = await self.get_all_groups()
+            # Получаем все группы напрямую через API
+            logger.info("🔍 Обновляем кеш групп...")
+            all_groups = await self._get_all_groups_from_api()
             
             groups_cache = {}
             
@@ -971,6 +983,44 @@ class KaitenClient:
         except Exception as e:
             logger.error(f"❌ Ошибка получения кеша групп: {e}")
             return {}
+    
+    async def get_all_groups(self) -> List[Dict[str, Any]]:
+        """
+        Получает список всех групп доступа компании.
+        Использует кеш если он актуален, иначе запрашивает через API.
+        
+        Returns:
+            Список всех групп доступа с базовой информацией (id, uid, name)
+        """
+        try:
+            cache_file = Path("mappings/groups_cache.json")
+            
+            # Сначала проверяем кеш
+            if self._is_cache_valid(cache_file, max_age_hours=24):
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        cached_data = json.load(f)
+                    
+                    # Извлекаем базовую информацию о группах из кеша
+                    groups_list = []
+                    for group_uid, group_data in cached_data.items():
+                        groups_list.append({
+                            'id': group_data.get('id'),
+                            'uid': group_data.get('uid'),
+                            'name': group_data.get('name', '')
+                        })
+                    
+                    logger.success(f"📂 Группы загружены из кеша: {len(groups_list)} записей")
+                    return groups_list
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка чтения кеша групп: {e}")
+            
+            # Если кеш недоступен или устарел - запрашиваем через API
+            return await self._get_all_groups_from_api()
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении групп доступа: {e}")
+            return []
 
     async def get_space_users_via_groups(self, space_id: int) -> List[Dict[str, Any]]:
         """
@@ -1029,34 +1079,6 @@ class KaitenClient:
             logger.error(f"❌ Ошибка получения пользователей пространства {space_id} через группы: {e}")
             return []
 
-    async def get_all_groups(self) -> List[Dict[str, Any]]:
-        """
-        Получает список всех групп доступа компании.
-        
-        Returns:
-            Список всех групп доступа
-        """
-        try:
-            # Правильный endpoint для получения групп компании
-            endpoint = "/api/latest/company/groups"
-            logger.info(f"🔍 Получаем группы компании через {endpoint}...")
-            data = await self._request("GET", endpoint)
-            
-            if data is not None:
-                if isinstance(data, list):
-                    logger.success(f"✅ Найдено {len(data)} групп доступа через {endpoint}")
-                    return data
-                else:
-                    logger.debug(f"Неожиданная структура ответа от {endpoint}: {data}")
-                    return []
-            
-            logger.warning("❌ Группы доступа не найдены")
-            return []
-                
-        except Exception as e:
-            logger.error(f"❌ Ошибка при получении групп доступа: {e}")
-            return []
-
     async def get_group_users(self, group_uid: str) -> List[Dict[str, Any]]:
         """
         Получает список пользователей группы по UID группы.
@@ -1067,9 +1089,9 @@ class KaitenClient:
         Returns:
             Список пользователей группы
         """
+        logger.debug(f"Получаем пользователей группы {group_uid}...")
         try:
             endpoint = f"/api/latest/groups/{group_uid}/users"
-            logger.info(f"👥 Получаем пользователей группы {group_uid}...")
             data = await self._request("GET", endpoint)
             
             if data is not None:
@@ -1089,18 +1111,17 @@ class KaitenClient:
 
     async def get_group_entities(self, group_uid: str) -> List[Dict[str, Any]]:
         """
-        Получает список сущностей (entities) группы по UID группы.
-        Это пространства, к которым у группы есть доступ.
+        Получает список сущностей (пространств/досок), к которым имеет доступ группа.
         
         Args:
-            group_uid: UID группы (не ID!)
+            group_uid: UID группы
             
         Returns:
-            Список сущностей группы (пространства)
+            Список сущностей с их ролями
         """
+        logger.debug(f"Получаем сущности группы {group_uid}...")
         try:
             endpoint = f"/api/latest/company/groups/{group_uid}/entities"
-            logger.info(f"📂 Получаем сущности группы {group_uid}...")
             data = await self._request("GET", endpoint)
             
             if data is not None:

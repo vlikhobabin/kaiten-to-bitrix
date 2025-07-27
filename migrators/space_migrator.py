@@ -52,7 +52,7 @@ class SpaceMigrator:
                     break
             
             if not env_file:
-                logger.warning("⚠️ Файл конфигурации SSH не найден. Автоматическая установка возможностей отключена.")
+                logger.debug("SSH конфигурация не найдена. Автоматическая установка возможностей отключена.")
                 return {}
             
             config = {}
@@ -67,13 +67,14 @@ class SpaceMigrator:
             missing_keys = [key for key in required_keys if key not in config]
             
             if missing_keys:
-                logger.warning(f"⚠️ Отсутствуют SSH параметры: {missing_keys}. Автоматическая установка возможностей отключена.")
+                logger.debug(f"Отсутствуют SSH параметры: {missing_keys}. Автоматическая установка возможностей отключена.")
                 return {}
             
+            logger.debug("SSH конфигурация успешно загружена")
             return config
             
         except Exception as e:
-            logger.warning(f"⚠️ Ошибка загрузки SSH конфигурации: {e}. Автоматическая установка возможностей отключена.")
+            logger.debug(f"Ошибка загрузки SSH конфигурации: {e}. Автоматическая установка возможностей отключена.")
             return {}
 
     async def set_group_features_via_ssh(self, group_id: int, features: Optional[List[str]] = None) -> bool:
@@ -110,7 +111,7 @@ class SpaceMigrator:
                 ssh_command
             ]
             
-            logger.debug(f"🔧 Установка возможностей для группы {group_id} через SSH...")
+            logger.debug(f"Установка возможностей для группы {group_id} через SSH...")
             
             # Выполняем команду
             result = subprocess.run(
@@ -122,7 +123,7 @@ class SpaceMigrator:
             )
             
             if result.returncode == 0:
-                logger.info(f"✅ Возможности группы {group_id} установлены успешно")
+                logger.debug(f"Возможности группы {group_id} установлены успешно")
                 # Логируем вывод для отладки
                 if result.stdout.strip():
                     logger.debug(f"SSH output: {result.stdout.strip()}")
@@ -154,7 +155,7 @@ class SpaceMigrator:
                 data = json.load(f)
                 self.user_mapping = data.get('mapping', {})
             
-            logger.info(f"📥 Загружен маппинг пользователей: {len(self.user_mapping)} записей")
+            logger.debug(f"Загружен маппинг пользователей: {len(self.user_mapping)} записей")
             return True
             
         except Exception as e:
@@ -164,7 +165,7 @@ class SpaceMigrator:
     async def build_spaces_hierarchy(self) -> bool:
         """Строит полную иерархию пространств"""
         try:
-            logger.info("📥 Получение иерархии пространств из Kaiten...")
+            logger.debug("Получение иерархии пространств из Kaiten...")
             spaces = await self.kaiten_client.get_spaces()
             
             if not spaces:
@@ -175,7 +176,7 @@ class SpaceMigrator:
             for space in spaces:
                 self.spaces_hierarchy[space.uid] = space
             
-            logger.info(f"📊 Загружено {len(spaces)} пространств в иерархию")
+            logger.debug(f"Загружено {len(spaces)} пространств в иерархию")
             return True
             
         except Exception as e:
@@ -286,14 +287,14 @@ class SpaceMigrator:
             # Определяем пространство-источник администраторов
             admin_source_space = self.determine_admin_source_space(space)
             if not admin_source_space:
-                logger.warning(f"Не удалось определить источник администраторов для пространства '{space.title}'")
+                logger.debug(f"Не удалось определить источник администраторов для пространства '{space.title}'")
                 return None, []
             
             # Получаем администраторов пространства
             administrators = await self.kaiten_client.get_space_administrators(admin_source_space.id)
             
             if not administrators:
-                logger.warning(f"Администраторы не найдены в пространстве '{admin_source_space.title}'")
+                logger.debug(f"Администраторы не найдены в пространстве '{admin_source_space.title}'")
                 return None, []
             
             # Преобразуем в ID Bitrix24
@@ -306,16 +307,16 @@ class SpaceMigrator:
                     admin_bitrix_ids.append(bitrix_id)
                     logger.debug(f"Администратор {admin['full_name']} (Kaiten: {kaiten_id}) -> Bitrix: {bitrix_id}")
                 else:
-                    logger.warning(f"Администратор {admin['full_name']} (Kaiten: {kaiten_id}) не найден в маппинге пользователей")
+                    logger.debug(f"Администратор {admin['full_name']} (Kaiten: {kaiten_id}) не найден в маппинге пользователей")
             
             if admin_bitrix_ids:
                 owner_id = admin_bitrix_ids[0]  # Первый администратор = руководитель
                 moderator_ids = admin_bitrix_ids[1:]  # Остальные = помощники
                 
-                logger.info(f"Для пространства '{space.title}' из '{admin_source_space.title}': руководитель={owner_id}, помощников={len(moderator_ids)}")
+                logger.debug(f"Для пространства '{space.title}' из '{admin_source_space.title}': руководитель={owner_id}, помощников={len(moderator_ids)}")
                 return owner_id, moderator_ids
             else:
-                logger.warning(f"Ни один администратор пространства '{admin_source_space.title}' не найден в маппинге пользователей")
+                logger.debug(f"Ни один администратор пространства '{admin_source_space.title}' не найден в маппинге пользователей")
                 return None, []
                 
         except Exception as e:
@@ -385,7 +386,7 @@ class SpaceMigrator:
                     if bitrix_id and bitrix_id != owner_id:  # Исключаем владельца, если он совпадает
                         all_moderator_ids.append(bitrix_id)
                         
-                logger.info(f"Для пространства '{space.title}': владелец из родительского={owner_id}, модераторов={len(all_moderator_ids)} (родительские + дочерние администраторы)")
+                logger.debug(f"Для пространства '{space.title}': владелец из родительского={owner_id}, модераторов={len(all_moderator_ids)} (родительские + дочерние администраторы)")
             
             else:
                 logger.warning(f"Пространство '{space.title}' уровня {level} не должно мигрироваться")
@@ -394,7 +395,7 @@ class SpaceMigrator:
             # Удаляем дубликаты из модераторов
             unique_moderator_ids = list(dict.fromkeys(all_moderator_ids))  # Сохраняет порядок
             
-            logger.info(f"Роли для пространства '{space.title}': владелец={owner_id}, модераторов={len(unique_moderator_ids)}")
+            logger.debug(f"Роли для пространства '{space.title}': владелец={owner_id}, модераторов={len(unique_moderator_ids)}")
             return owner_id, unique_moderator_ids
                 
         except Exception as e:
@@ -411,13 +412,13 @@ class SpaceMigrator:
         """
         spaces_to_migrate = []
         
-        logger.info("🔍 Анализ пространств для миграции...")
-        logger.info(f"📋 Исключенные пространства: {get_excluded_spaces()}")
+        logger.debug("Анализ пространств для миграции...")
+        logger.debug(f"Исключенные пространства: {get_excluded_spaces()}")
         
         for space in self.spaces_hierarchy.values():
             # Пропускаем пространства из исключенного дерева
             if self.is_space_in_excluded_tree(space):
-                logger.debug(f"⏭️ Пропускаем пространство '{space.title}' (в исключенном дереве)")
+                logger.debug(f"Пропускаем пространство '{space.title}' (в исключенном дереве)")
                 continue
             
             # Определяем уровень пространства
@@ -429,24 +430,24 @@ class SpaceMigrator:
             # Логика отбора:
             if level == 1 and child_spaces:
                 # Пространство 1-го уровня с дочерними - НЕ переносим
-                logger.debug(f"⏭️ Пропускаем пространство 1-го уровня с дочерними: '{space.title}'")
+                logger.debug(f"Пропускаем пространство 1-го уровня с дочерними: '{space.title}'")
                 continue
             elif level == 2:
                 # Пространство 2-го уровня - переносим всегда
                 spaces_to_migrate.append(space)
-                logger.debug(f"✅ Пространство 2-го уровня: '{space.title}'")
+                logger.debug(f"Пространство 2-го уровня: '{space.title}'")
             elif level > 2:
                 # Пространство глубже 2-го уровня - НЕ переносим
-                logger.debug(f"⏭️ Пропускаем пространство {level}-го уровня: '{space.title}'")
+                logger.debug(f"Пропускаем пространство {level}-го уровня: '{space.title}'")
                 continue
             elif level == 1 and not child_spaces:
                 # Конечное пространство 1-го уровня - переносим
                 spaces_to_migrate.append(space)
-                logger.debug(f"✅ Конечное пространство 1-го уровня: '{space.title}'")
+                logger.debug(f"Конечное пространство 1-го уровня: '{space.title}'")
             elif not child_spaces:
                 # Любое другое конечное пространство - переносим
                 spaces_to_migrate.append(space)
-                logger.debug(f"✅ Конечное пространство {level}-го уровня: '{space.title}'")
+                logger.debug(f"Конечное пространство {level}-го уровня: '{space.title}'")
         
         logger.info(f"📊 Найдено {len(spaces_to_migrate)} пространств для миграции")
         return spaces_to_migrate
@@ -498,10 +499,10 @@ class SpaceMigrator:
             
             if level == 2:
                 # Для пространства 2-го уровня объединяем участников родительского и дочернего
-                logger.info(f"🔗 Пространство 2-го уровня '{target_space.title}' - объединяем участников родительского и дочернего")
+                logger.debug(f"Пространство 2-го уровня '{target_space.title}' - объединяем участников родительского и дочернего")
                 
                 # Получаем ВСЕХ пользователей дочернего пространства с ролями (включая через группы)
-                logger.info(f"👥 Получаем всех пользователей дочернего пространства (включая через группы доступа)...")
+                logger.debug(f"Получаем всех пользователей дочернего пространства (включая через группы доступа)...")
                 child_users = await self.kaiten_client.get_all_space_users_including_groups(space_id)
                 
                 # Разделяем на администраторов и остальных
@@ -515,8 +516,8 @@ class SpaceMigrator:
                 groups_count = len([u for u in child_users if u.get('access_type') == 'groups'])
                 groups_and_direct_count = len([u for u in child_users if u.get('access_type') == 'groups_and_direct'])
                 
-                logger.info(f"👥 Пользователей дочернего пространства: {len(child_others)} (редакторы+участники) + {len(child_admins)} (администраторы)")
-                logger.info(f"   📊 По типу доступа: роли={roles_count}, участники={members_count}, оба={both_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
+                logger.debug(f"Пользователей дочернего пространства: {len(child_others)} (редакторы+участники) + {len(child_admins)} (администраторы)")
+                logger.debug(f"По типу доступа: роли={roles_count}, участники={members_count}, оба={both_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
                 
                 # Добавляем всех пользователей дочернего пространства (включая администраторов)
                 for user in child_users:
@@ -528,14 +529,14 @@ class SpaceMigrator:
                         if user.get('access_type') in ['groups', 'groups_and_direct']:
                             user_name = user.get('full_name', f'ID {kaiten_id}')
                             groups = user.get('groups', [])
-                            logger.debug(f"   👥 {user_name} (через группы: {', '.join(groups)})")
+                            logger.debug(f"   {user_name} (через группы: {', '.join(groups)})")
                 
                 # Получаем ВСЕХ пользователей родительского пространства (редакторы + участники, включая через группы)
                 if target_space.parent_entity_uid:
                     parent_space = self.spaces_hierarchy.get(target_space.parent_entity_uid)
                     if parent_space:
                         # Получаем всех пользователей с ролями (включая через группы)
-                        logger.info(f"👥 Получаем всех пользователей родительского пространства (включая через группы доступа)...")
+                        logger.debug(f"Получаем всех пользователей родительского пространства (включая через группы доступа)...")
                         parent_users = await self.kaiten_client.get_all_space_users_including_groups(parent_space.id)
                         
                         # Исключаем только администраторов (space_role_id == 3)
@@ -548,8 +549,8 @@ class SpaceMigrator:
                         p_groups_count = len([u for u in parent_members if u.get('access_type') == 'groups'])
                         p_groups_and_direct_count = len([u for u in parent_members if u.get('access_type') == 'groups_and_direct'])
                         
-                        logger.info(f"👥 Пользователей родительского пространства '{parent_space.title}': {len(parent_members)} (исключены администраторы)")
-                        logger.info(f"   📊 По типу доступа: роли={p_roles_count}, участники={p_members_count}, оба={p_both_count}, группы={p_groups_count}, группы+прямой={p_groups_and_direct_count}")
+                        logger.debug(f"Пользователей родительского пространства '{parent_space.title}': {len(parent_members)} (исключены администраторы)")
+                        logger.debug(f"По типу доступа: роли={p_roles_count}, участники={p_members_count}, оба={p_both_count}, группы={p_groups_count}, группы+прямой={p_groups_and_direct_count}")
                         
                         for member in parent_members:
                             kaiten_id = str(member['id'])
@@ -560,12 +561,12 @@ class SpaceMigrator:
                                 if member.get('access_type') in ['groups', 'groups_and_direct']:
                                     user_name = member.get('full_name', f'ID {kaiten_id}')
                                     groups = member.get('groups', [])
-                                    logger.debug(f"   👥 {user_name} (через группы: {', '.join(groups)})")
+                                    logger.debug(f"   {user_name} (через группы: {', '.join(groups)})")
                     else:
                         logger.warning(f"Родительское пространство не найдено для {target_space.title}")
             else:
                 # Для остальных пространств - получаем только активных пользователей с ролями + группы доступа (БЕЗ всех участников)
-                logger.info(f"📍 Пространство {level}-го уровня '{target_space.title}' - берем только активных пользователей с ролями + группы доступа")
+                logger.debug(f"Пространство {level}-го уровня '{target_space.title}' - берем только активных пользователей с ролями + группы доступа")
                 
                 all_users = {}  # Используем словарь для автоматического удаления дубликатов по ID
                 
@@ -581,14 +582,14 @@ class SpaceMigrator:
                             'source': 'roles'
                         }
                 
-                logger.info(f"📋 Найдено {len(users_with_roles)} активных пользователей с ролями")
+                logger.debug(f"Найдено {len(users_with_roles)} активных пользователей с ролями")
                 
                 # 2. Получаем пользователей из групп доступа (правильная логика)
-                logger.info(f"🔍 Ищем пользователей пространства {space_id} через группы доступа...")
+                logger.debug(f"Ищем пользователей пространства {space_id} через группы доступа...")
                 group_users = await self.kaiten_client.get_space_users_via_groups(space_id)
                 
                 if group_users:
-                    logger.info(f"📋 Найдено {len(group_users)} пользователей через группы доступа")
+                    logger.debug(f"Найдено {len(group_users)} пользователей через группы доступа")
                     
                     for user in group_users:
                         user_id = user.get('id')
@@ -609,7 +610,7 @@ class SpaceMigrator:
                                     'groups': [user.get('group_name', 'Unknown Group')]
                                 }
                 else:
-                    logger.info("📋 Пользователи через группы доступа не найдены")
+                    logger.debug("Пользователи через группы доступа не найдены")
                 
                 # Возвращаем всех уникальных пользователей
                 space_users = list(all_users.values())
@@ -619,8 +620,8 @@ class SpaceMigrator:
                 groups_count = len([u for u in space_users if u.get('access_type') == 'groups'])
                 groups_and_direct_count = len([u for u in space_users if u.get('access_type') == 'groups_and_direct'])
                 
-                logger.info(f"👥 Всего активных пользователей: {len(space_users)}")
-                logger.info(f"   📊 По типу доступа: роли={roles_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
+                logger.debug(f"Всего активных пользователей: {len(space_users)}")
+                logger.debug(f"По типу доступа: роли={roles_count}, группы={groups_count}, группы+прямой={groups_and_direct_count}")
                 
                 for user in space_users:
                     kaiten_id = str(user['id'])
@@ -631,14 +632,14 @@ class SpaceMigrator:
                         if user.get('access_type') in ['groups', 'groups_and_direct']:
                             user_name = user.get('full_name', f'ID {kaiten_id}')
                             groups = user.get('groups', [])
-                            logger.debug(f"   👥 {user_name} (через группы: {', '.join(groups)})")
+                            logger.debug(f"   {user_name} (через группы: {', '.join(groups)})")
                     else:
                         user_name = user.get('full_name', 'Unknown')
                         access_info = f" (доступ: {user.get('access_type', 'unknown')})"
-                        logger.warning(f"⚠️ Пользователь {user_name} (ID: {kaiten_id}){access_info} не найден в маппинге")
+                        logger.debug(f"Пользователь {user_name} (ID: {kaiten_id}){access_info} не найден в маппинге")
             
             result = list(all_bitrix_ids)
-            logger.success(f"👥 Итого найдено {len(result)} уникальных участников для пространства {space_id} (включая пользователей из групп доступа)")
+            logger.debug(f"Итого найдено {len(result)} уникальных участников для пространства {space_id} (включая пользователей из групп доступа)")
             return result
             
         except Exception as e:
@@ -702,7 +703,6 @@ class SpaceMigrator:
             Словарь со статистикой миграции
         """
         logger.info("🚀 НАЧИНАЕМ МИГРАЦИЮ ПРОСТРАНСТВ ИЗ KAITEN В BITRIX24")
-        logger.info("🔄 ЛОГИКА: Переносим пространства (НЕ доски)")
         logger.info("=" * 80)
         
         # Проверка взаимоисключающих параметров
@@ -761,10 +761,10 @@ class SpaceMigrator:
                 logger.info(f"🔢 Ограничение: будет обработано {len(spaces_to_migrate)} пространств")
             
             # Получаем существующие группы из Bitrix24
-            logger.info("📥 Получение существующих рабочих групп из Bitrix24...")
+            logger.debug("Получение существующих рабочих групп из Bitrix24...")
             existing_groups = await self.bitrix_client.get_workgroup_list()
             groups_map = {group['NAME']: group for group in existing_groups}
-            logger.info(f"📊 Найдено {len(existing_groups)} существующих рабочих групп в Bitrix24")
+            logger.debug(f"Найдено {len(existing_groups)} существующих рабочих групп в Bitrix24")
             
             # Обрабатываем каждое пространство
             for i, space in enumerate(spaces_to_migrate, 1):
@@ -781,11 +781,12 @@ class SpaceMigrator:
                     
                     # Проверяем существует ли группа
                     if group_name in groups_map:
-                        logger.info(f"♻️ Группа '{group_name}' уже существует, обновляем владельца и участников...")
+                        logger.debug(f"Группа '{group_name}' уже существует, обновляем владельца и участников...")
                         group_id = str(groups_map[group_name]['ID'])
                         stats["updated"] += 1
                         
                         # Проверяем нужно ли менять владельца группы
+                        current_roles = None
                         if owner_id:
                             # Получаем текущих участников группы с ролями
                             current_roles = await self.bitrix_client.get_workgroup_users_with_roles(int(group_id))
@@ -793,32 +794,33 @@ class SpaceMigrator:
                             
                             # Проверяем нужно ли менять владельца
                             if owner_id not in current_owners:
-                                logger.info(f"🔄 Смена владельца группы {group_id}: с {current_owners} на {owner_id}")
+                                logger.debug(f"Смена владельца группы {group_id}: с {current_owners} на {owner_id}")
                                 await self.bitrix_client.set_workgroup_owner(int(group_id), int(owner_id))
                             else:
-                                logger.info(f"✅ Владелец группы {group_id} уже корректный: {owner_id}")
+                                logger.debug(f"Владелец группы {group_id} уже корректный: {owner_id}")
                         
                         # Обновляем возможности группы до наших стандартов
-                        logger.info(f"🎯 Обновляем возможности группы '{group_name}' до стандартного набора...")
+                        logger.debug(f"Обновляем возможности группы '{group_name}' до стандартного набора...")
                         enabled_features = ['tasks', 'files', 'calendar', 'chat', 'landing_knowledge', 'search']
                         
                         # Установка возможностей через прямой доступ к БД
                         ssh_features_updated = await self.set_group_features_via_ssh(int(group_id), enabled_features)
                         
                         if ssh_features_updated:
-                            logger.info(f"✅ Возможности группы обновлены через БД: Задачи, Диск, Календарь, Чат, База знаний")
+                            logger.debug(f"Возможности группы обновлены через БД: Задачи, Диск, Календарь, Чат, База знаний")
                         else:
                             logger.warning(f"⚠️ Не удалось обновить возможности группы '{group_name}'. Установите их вручную.")
                         
                         # Очищаем всех участников существующей группы (кроме владельца)
-                        clear_stats = await self.bitrix_client.clear_workgroup_members(int(group_id))
+                        # Передаем уже полученные роли чтобы избежать повторного запроса
+                        clear_stats = await self.bitrix_client.clear_workgroup_members(int(group_id), current_roles)
                         stats["members_removed"] += clear_stats["removed"]
                         if clear_stats["errors"] > 0:
                             stats["errors"] += clear_stats["errors"]
                         
                     else:
                         # Создаем новую группу
-                        logger.info(f"➕ Создание новой группы '{group_name}'...")
+                        logger.debug(f"Создание новой группы '{group_name}'...")
                         
                         group_data = {
                             'NAME': group_name,
@@ -831,7 +833,7 @@ class SpaceMigrator:
                         # Назначаем руководителя группы, если найден
                         if owner_id:
                             group_data['OWNER_ID'] = owner_id
-                            logger.info(f"👑 Назначаем руководителя группы: пользователь {owner_id}")
+                            logger.debug(f"Назначаем руководителя группы: пользователь {owner_id}")
                         
                         # Создаем группу без возможностей (установим их потом через БД)
                         group_result = await self.bitrix_client.create_workgroup(group_data)
@@ -850,7 +852,7 @@ class SpaceMigrator:
                             ssh_features_updated = await self.set_group_features_via_ssh(int(group_id), enabled_features)
                             
                             if ssh_features_updated:
-                                logger.info(f"🎯 Возможности установлены: Задачи, Диск, Календарь, Чат, База знаний")
+                                logger.debug(f"Возможности установлены: Задачи, Диск, Календарь, Чат, База знаний")
                             else:
                                 logger.warning(f"⚠️ Не удалось автоматически установить возможности для группы '{group_name}'. Установите их вручную.")
                             
@@ -876,10 +878,10 @@ class SpaceMigrator:
                         
                         regular_members = [user_id for user_id in space_members if user_id not in admin_ids]
                         
-                        logger.info(f"👥 Всего участников пространства: {len(space_members)}")
-                        logger.info(f"👑 Владелец группы: {owner_id}")
-                        logger.info(f"👔 Модераторов: {len(moderator_ids)}")
-                        logger.info(f"👥 Обычных участников: {len(regular_members)}")
+                        logger.debug(f"Всего участников пространства: {len(space_members)}")
+                        logger.debug(f"Владелец группы: {owner_id}")
+                        logger.debug(f"Модераторов: {len(moderator_ids)}")
+                        logger.debug(f"Обычных участников: {len(regular_members)}")
                         
                         # Добавляем всех участников в группу с правильными ролями
                         add_stats = await self.add_members_to_group(
@@ -930,7 +932,10 @@ class SpaceMigrator:
         try:
             # 1. Добавляем модераторов (администраторы кроме владельца)
             if moderator_ids:
-                logger.info(f"👔 Добавляем {len(moderator_ids)} модераторов...")
+                logger.debug(f"Добавляем {len(moderator_ids)} модераторов...")
+                moderators_added = 0
+                moderators_errors = 0
+                
                 for moderator_id in moderator_ids:
                     try:
                         # Сначала добавляем как обычного участника
@@ -939,32 +944,49 @@ class SpaceMigrator:
                             # Затем меняем роль на модератора (E)
                             role_success = await self.bitrix_client.update_workgroup_user_role(int(group_id), int(moderator_id), 'E')
                             if role_success:
-                                stats["added"] += 1
-                                logger.info(f"✅ Пользователь {moderator_id} добавлен как модератор")
+                                moderators_added += 1
+                                logger.debug(f"Пользователь {moderator_id} добавлен как модератор")
                             else:
-                                logger.warning(f"⚠️ Пользователь {moderator_id} добавлен, но не удалось назначить роль модератора")
-                                stats["added"] += 1  # Все равно считаем как добавленного
+                                moderators_added += 1  # Все равно считаем как добавленного
+                                logger.debug(f"Пользователь {moderator_id} добавлен, но не удалось назначить роль модератора")
                         else:
-                            logger.warning(f"⚠️ Не удалось добавить модератора {moderator_id}")
-                            stats["errors"] += 1
+                            moderators_errors += 1
+                            logger.debug(f"Не удалось добавить модератора {moderator_id}")
                     except Exception as e:
-                        logger.warning(f"⚠️ Ошибка добавления модератора {moderator_id}: {e}")
-                        stats["errors"] += 1
+                        moderators_errors += 1
+                        logger.debug(f"Ошибка добавления модератора {moderator_id}: {e}")
+                
+                # Итоговое сообщение по модераторам
+                if moderators_added > 0:
+                    logger.success(f"Добавлено модераторов: {moderators_added} из {len(moderator_ids)}")
+                
+                stats["added"] += moderators_added
+                stats["errors"] += moderators_errors
             
             # 2. Добавляем обычных участников
             if member_ids:
-                logger.info(f"👥 Добавляем {len(member_ids)} обычных участников...")
+                logger.debug(f"Добавляем {len(member_ids)} обычных участников...")
+                members_added = 0
+                members_errors = 0
+                
                 for member_id in member_ids:
                     try:
                         success = await self.bitrix_client.add_user_to_workgroup(int(group_id), int(member_id))
                         if success:
-                            stats["added"] += 1
+                            members_added += 1
                         else:
-                            logger.warning(f"⚠️ Не удалось добавить участника {member_id}")
-                            stats["errors"] += 1
+                            members_errors += 1
+                            logger.debug(f"Не удалось добавить участника {member_id}")
                     except Exception as e:
-                        logger.warning(f"⚠️ Ошибка добавления участника {member_id}: {e}")
-                        stats["errors"] += 1
+                        members_errors += 1
+                        logger.debug(f"Ошибка добавления участника {member_id}: {e}")
+                
+                # Итоговое сообщение по участникам
+                if members_added > 0:
+                    logger.success(f"Добавлено участников: {members_added} из {len(member_ids)}")
+                
+                stats["added"] += members_added
+                stats["errors"] += members_errors
             
             total_target = len(moderator_ids) + len(member_ids) + (1 if owner_id else 0)
             logger.success(f"✅ Добавлено участников в группу '{space.title}': {stats['added']} из {total_target} (владелец: {1 if owner_id else 0}, модераторы: {len(moderator_ids)}, участники: {len(member_ids)})")
@@ -990,7 +1012,7 @@ class SpaceMigrator:
                     existing_data = json.load(f)
                     existing_mapping = existing_data.get("mapping", {})
                     existing_stats = existing_data.get("stats", existing_stats)
-                logger.info(f"📂 Загружен существующий маппинг пространств: {len(existing_mapping)} записей")
+                logger.debug(f"Загружен существующий маппинг пространств: {len(existing_mapping)} записей")
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка загрузки существующего маппинга пространств: {e}")
         
@@ -1014,7 +1036,7 @@ class SpaceMigrator:
         with open(mapping_file, 'w', encoding='utf-8') as f:
             json.dump(mapping_data, f, ensure_ascii=False, indent=2)
         
-        logger.info(f"💾 Маппинг пространств сохранен/обновлен в файл: {mapping_file}")
+        logger.debug(f"Маппинг пространств сохранен/обновлен в файл: {mapping_file}")
 
     async def _print_final_report(self, stats: Dict):
         """Выводит финальный отчет миграции"""

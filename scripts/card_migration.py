@@ -106,9 +106,9 @@ async def main():
         if args.limit:
             mode_text += f" (ЛИМИТ: {args.limit})"
     
-    logger.info("=" * 60)
+    logger.info("=" * 80)
     logger.info(f"🚀 ЗАПУСК: {mode_text}")
-    logger.info("=" * 60)
+    logger.info("=" * 80)
     logger.info(f"Пространство Kaiten: {args.space_id}")
     
     if args.card_id:
@@ -131,7 +131,7 @@ async def main():
     else:
         logger.info("Режим: полная миграция карточек в задачи")
     
-    logger.info("=" * 60)
+    logger.info("=" * 80)
     
     try:
         # Создаем мигратор

@@ -324,7 +324,7 @@ async def main():
     
     args = parser.parse_args()
     
-    logger.info("=" * 60)
+    logger.info("=" * 80)
     if args.space_id:
         if args.migration_only:
             logger.info(f"🎯 ПОИСК КАРТОЧЕК ДЛЯ МИГРАЦИИ В ПРОСТРАНСТВЕ {args.space_id}")
@@ -335,7 +335,7 @@ async def main():
             logger.info("🎯 ПОИСК КАРТОЧЕК ДЛЯ МИГРАЦИИ В СИСТЕМЕ")
         else:
             logger.info("🔍 ПОИСК ВСЕХ КАРТОЧЕК В СИСТЕМЕ")
-    logger.info("=" * 60)
+    logger.info("=" * 80)
     
     await get_all_cards(space_filter=args.space_id, limit=args.limit, migration_only=args.migration_only)
 

@@ -201,7 +201,7 @@ async def main():
     args = parser.parse_args()
     
     logger.info("🗑️ ЗАПУСК СКРИПТА МАССОВОГО УДАЛЕНИЯ ГРУПП BITRIX24")
-    logger.info("=" * 70)
+    logger.info("=" * 80)
     
     try:
         success = await delete_all_groups(
