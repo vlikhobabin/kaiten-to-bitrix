@@ -66,7 +66,7 @@ def should_migrate_card(card: dict) -> bool:
     
     return True
 
-async def get_all_cards(space_filter: int = None, limit: int = 200, migration_only: bool = False):
+async def get_all_cards(space_filter: int = 0, limit: int = 200, migration_only: bool = False):
     """
     Получает все карточки из Kaiten с возможностью фильтрации по пространству.
     

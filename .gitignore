@@ -2,6 +2,8 @@
 .env
 env.txt
 
+todo.md
+
 # SSH keys and certificates
 *.pem
 *.ppk

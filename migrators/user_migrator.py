@@ -128,6 +128,8 @@ class UserMigrator:
         Args:
             kaiten_user: Пользователь Kaiten для обработки
         """
+        assert self.transformer is not None, "Transformer must be initialized before processing users"
+        
         self.stats['processed'] += 1
         
         try:
@@ -285,7 +287,7 @@ class UserMigrator:
             else:
                 logger.warning("⚠️ ВНИМАНИЕ! Много ошибок при миграции, требуется проверка")
 
-    def _get_migration_result(self, success: bool, error: str = None) -> Dict:
+    def _get_migration_result(self, success: bool, error: Optional[str] = None) -> Dict:
         """
         Формирует результат миграции.
         

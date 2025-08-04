@@ -61,8 +61,9 @@ class CardMigrator:
     
     Правила миграции:
     1. Карточки из колонок type: 1 -> стадия "Новые"
-    2. Карточки из колонок type: 3 -> НЕ ПЕРЕНОСЯТСЯ
-    3. Карточки из остальных колонок -> стадия "Выполняются"
+    2. Карточки из колонок type: 3 -> НЕ ПЕРЕНОСЯТСЯ (если не указан include_archived=True)
+    3. Карточки из колонок type: 3 -> стадия "Сделаны" + STATUS=5 (если указан include_archived=True)
+    4. Карточки из остальных колонок -> стадия "Выполняются"
     """
     
     def __init__(self):
@@ -287,12 +288,13 @@ class CardMigrator:
             logger.error(f"Критическая ошибка получения/создания стадий: {e}")
             return {}
 
-    def get_target_stage_for_card(self, card: Union[KaitenCard, SimpleKaitenCard]) -> Optional[str]:
+    def get_target_stage_for_card(self, card: Union[KaitenCard, SimpleKaitenCard], include_archived: bool = False) -> Optional[str]:
         """
         Определяет целевую стадию для карточки на основе правил миграции.
         
         Args:
             card: Карточка Kaiten
+            include_archived: Если True, карточки type: 3 попадают в стадию "Сделаны"
             
         Returns:
             Название целевой стадии или None если карточку переносить не нужно
@@ -304,25 +306,33 @@ class CardMigrator:
         
         if column_type == 1:  # Начальная колонка
             return "Новые"
-        elif column_type == 3:  # Финальная колонка - не переносим
-            return None
+        elif column_type == 3:  # Финальная колонка
+            if include_archived:
+                return "Сделаны"  # Если включены архивные - переносим в стадию "Сделаны"
+            else:
+                return None  # Иначе не переносим
         else:  # Все остальные колонки (включая None)
             return "Выполняются"
 
-    def should_migrate_card(self, card: Union[KaitenCard, SimpleKaitenCard]) -> bool:
+    def should_migrate_card(self, card: Union[KaitenCard, SimpleKaitenCard], include_archived: bool = False) -> bool:
         """
         Проверяет, нужно ли переносить карточку.
         
         Args:
             card: Карточка Kaiten
+            include_archived: Если True, карточки type: 3 будут включены в миграцию
             
         Returns:
             True если карточку нужно переносить, False иначе
         """
         # Фильтр по типу колонки
         if hasattr(card, 'column') and card.column and card.column.type == 3:
-            logger.debug(f"🚫 Карточка '{card.title}' пропущена (финальная колонка type: 3)")
-            return False
+            if not include_archived:
+                logger.debug(f"🚫 Карточка '{card.title}' пропущена (финальная колонка type: 3)")
+                return False
+            else:
+                logger.debug(f"✅ Карточка '{card.title}' включена (финальная колонка type: 3, но включены архивные)")
+                # Продолжаем проверки ниже
             
         # Фильтр архивных карточек
         if card.archived:
@@ -332,7 +342,7 @@ class CardMigrator:
         return True
 
     async def migrate_cards_from_space(self, space_id: int, target_group_id: int, 
-                                     list_only: bool = False, limit: int | None = None, card_id: int | None = None) -> bool:
+                                     list_only: bool = False, limit: int | None = None, card_id: int | None = None, include_archived: bool = False) -> bool:
         """
         Мигрирует карточки из всех досок указанного пространства.
         
@@ -342,6 +352,7 @@ class CardMigrator:
             list_only: Если True, только выводит список карточек без миграции
             limit: Если указан, обрабатывает только первые N карточек первой доски
             card_id: Если указан, обрабатывает только конкретную карточку
+            include_archived: Если True, включает карточки из финальных колонок (type: 3)
             
         Returns:
             True в случае успеха
@@ -349,7 +360,7 @@ class CardMigrator:
         try:
             # Обработка конкретной карточки
             if card_id:
-                return await self.migrate_single_card_by_id(card_id, target_group_id, list_only)
+                return await self.migrate_single_card_by_id(card_id, target_group_id, list_only, include_archived)
             
             logger.info(f"🚀 Начинаем обработку пространства {space_id}")
             
@@ -373,6 +384,8 @@ class CardMigrator:
             # Если не в режиме просмотра, получаем стадии для миграции
             if not list_only:
                 required_stages = ["Новые", "Выполняются"]
+                if include_archived:
+                    required_stages.append("Сделаны")
                 self.stage_mapping = await self.get_task_stages_by_names(target_group_id, required_stages)
                 
                 if len(self.stage_mapping) == 0:
@@ -390,7 +403,7 @@ class CardMigrator:
             for board in boards:
                 remaining_limit = limit - processed_cards if limit else None
                 cards_processed_from_board = await self.process_board(
-                    board, target_group_id, list_only, remaining_limit
+                    board, target_group_id, list_only, remaining_limit, include_archived
                 )
                 processed_cards += cards_processed_from_board
                 self.stats['boards_processed'] += 1
@@ -412,7 +425,7 @@ class CardMigrator:
             logger.error(f"Ошибка миграции карточек из пространства {space_id}: {e}")
             return False
 
-    async def migrate_single_card_by_id(self, card_id: int, target_group_id: int, list_only: bool = False) -> bool:
+    async def migrate_single_card_by_id(self, card_id: int, target_group_id: int, list_only: bool = False, include_archived: bool = False) -> bool:
         """
         Мигрирует конкретную карточку по ее ID.
         
@@ -420,6 +433,7 @@ class CardMigrator:
             card_id: ID карточки Kaiten
             target_group_id: ID группы в Bitrix24
             list_only: Если True, только выводит информацию о карточке
+            include_archived: Если True, включает карточки из финальных колонок (type: 3)
             
         Returns:
             True в случае успеха
@@ -447,6 +461,8 @@ class CardMigrator:
             # Если не в режиме просмотра, получаем стадии для миграции
             if not list_only:
                 required_stages = ["Новые", "Выполняются"]
+                if include_archived:
+                    required_stages.append("Сделаны")
                 self.stage_mapping = await self.get_task_stages_by_names(target_group_id, required_stages)
                 
                 if len(self.stage_mapping) == 0:
@@ -466,7 +482,7 @@ class CardMigrator:
             errors_before = self.stats['cards_failed']
             filtered_before = self.stats['cards_filtered_out']
             
-            processed = await self.process_card(card, target_group_id, list_only)
+            processed = await self.process_card(card, target_group_id, list_only, include_archived)
             
             # Выводим статистику
             self.print_migration_stats()
@@ -484,7 +500,7 @@ class CardMigrator:
             logger.error(f"Ошибка обработки карточки {card_id}: {e}")
             return False
 
-    async def process_board(self, board: KaitenBoard, target_group_id: int, list_only: bool = False, limit: int | None = None):
+    async def process_board(self, board: KaitenBoard, target_group_id: int, list_only: bool = False, limit: int | None = None, include_archived: bool = False):
         """
         Обрабатывает карточки одной доски.
         
@@ -493,6 +509,7 @@ class CardMigrator:
             target_group_id: ID группы в Bitrix24
             list_only: Если True, только выводит список карточек
             limit: Максимальное количество карточек для обработки
+            include_archived: Если True, включает карточки из финальных колонок (type: 3)
             
         Returns:
             Количество обработанных карточек
@@ -543,7 +560,7 @@ class CardMigrator:
             
             # Обрабатываем каждую карточку
             for card in cards_to_process:
-                processed = await self.process_card(card, target_group_id, list_only)
+                processed = await self.process_card(card, target_group_id, list_only, include_archived)
                 if processed:  # Учитываем только карточки, которые действительно обработались
                     processed_count += 1
                 
@@ -557,7 +574,7 @@ class CardMigrator:
             logger.error(f"Ошибка обработки доски {board.title}: {e}")
             return 0
 
-    async def process_card(self, card: Union[KaitenCard, SimpleKaitenCard], target_group_id: int, list_only: bool = False):
+    async def process_card(self, card: Union[KaitenCard, SimpleKaitenCard], target_group_id: int, list_only: bool = False, include_archived: bool = False):
         """
         Обрабатывает одну карточку.
         
@@ -565,6 +582,7 @@ class CardMigrator:
             card: Карточка Kaiten
             target_group_id: ID группы в Bitrix24
             list_only: Если True, только выводит информацию о карточке
+            include_archived: Если True, включает карточки из финальных колонок (type: 3)
             
         Returns:
             True если карточка была обработана (не отфильтрована), False иначе
@@ -585,7 +603,7 @@ class CardMigrator:
                     logger.info(f"🔄 Карточка {card.id} -> обновляем задачу {existing_task_id}")
                     
                     # Определяем целевую стадию для обновления
-                    target_stage = self.get_target_stage_for_card(card)
+                    target_stage = self.get_target_stage_for_card(card, include_archived)
                     if not target_stage:
                         if hasattr(card, 'column') and card.column and card.column.type == 3:
                             # Это финальная колонка - пропускаем
@@ -601,12 +619,12 @@ class CardMigrator:
                     return True
             
             # Проверяем, нужно ли переносить карточку
-            if not self.should_migrate_card(card):
+            if not self.should_migrate_card(card, include_archived):
                 self.stats['cards_filtered_out'] += 1
                 return False
             
             # Определяем целевую стадию
-            target_stage = self.get_target_stage_for_card(card)
+            target_stage = self.get_target_stage_for_card(card, include_archived)
             if not target_stage:
                 if hasattr(card, 'column') and card.column and card.column.type == 3:
                     # Это финальная колонка - пропускаем
@@ -671,6 +689,11 @@ class CardMigrator:
                 logger.debug(f"Задача будет создана в стадии '{target_stage}' (ID: {stage_id})")
             else:
                 logger.debug(f"Стадия '{target_stage}' не найдена в маппинге, создаем задачу без стадии")
+            
+            # Для архивных карточек устанавливаем статус "Завершена" (STATUS = 5)
+            if target_stage == "Сделаны":
+                task_data['STATUS'] = 5
+                logger.debug(f"Архивная карточка: устанавливаем STATUS = 5 (Завершена)")
             
             # Создаем задачу в Bitrix24 с исходным описанием
             task_id = await self.bitrix_client.create_task(
@@ -773,6 +796,11 @@ class CardMigrator:
                 logger.debug(f"Задача будет обновлена в стадии '{target_stage}' (ID: {stage_id})")
             else:
                 logger.debug(f"Стадия '{target_stage}' не найдена в маппинге, обновляем задачу без изменения стадии")
+            
+            # Для архивных карточек устанавливаем статус "Завершена" (STATUS = 5)
+            if target_stage == "Сделаны":
+                task_data['STATUS'] = 5
+                logger.debug(f"Архивная карточка: устанавливаем STATUS = 5 (Завершена)")
             
             # Обновляем задачу в Bitrix24
             success = await self.bitrix_client.update_task(
@@ -1491,7 +1519,7 @@ class CardMigrator:
             logger.error(f"Ошибка загрузки маппинга пользовательских полей: {e}")
             return {}
 
-    async def migrate_card(self, card: Union[KaitenCard, SimpleKaitenCard], target_group_id: int) -> Optional[int]:
+    async def migrate_card(self, card: Union[KaitenCard, SimpleKaitenCard], target_group_id: int, include_archived: bool = False) -> Optional[int]:
         """
         Простой метод миграции карточки без пользовательских полей.
         Определяет стадию и создает задачу.
@@ -1499,13 +1527,14 @@ class CardMigrator:
         Args:
             card: Карточка Kaiten для миграции
             target_group_id: ID группы назначения в Bitrix24
+            include_archived: Если True, включает карточки из финальных колонок (type: 3)
             
         Returns:
             ID созданной задачи в Bitrix24 или None при ошибке
         """
         try:
             # Определяем целевую стадию
-            target_stage = self.get_target_stage_for_card(card)
+            target_stage = self.get_target_stage_for_card(card, include_archived)
             if not target_stage:
                 logger.debug(f"Карточка {card.id} отфильтрована (финальная колонка)")
                 return None
@@ -1549,6 +1578,11 @@ class CardMigrator:
             if stage_id:
                 task_data['STAGE_ID'] = stage_id
                 logger.debug(f"Задача будет создана в стадии '{target_stage}' (ID: {stage_id})")
+            
+            # Для архивных карточек устанавливаем статус "Завершена" (STATUS = 5)
+            if target_stage == "Сделаны":
+                task_data['STATUS'] = 5
+                logger.debug(f"Архивная карточка: устанавливаем STATUS = 5 (Завершена)")
             
             # Создаем задачу в Bitrix24
             task_id = await self.bitrix_client.create_task(
